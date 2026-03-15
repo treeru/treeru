@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+*.tgz
+.env
+.DS_Store
+Thumbs.db
+.treeru.pid
+treeru.bat
+treeru_debug.bat
