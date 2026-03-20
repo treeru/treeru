@@ -814,6 +814,36 @@ function saveClipboardImage() {
   });
 }
 
+// ── Clipboard File Paste ─────────────────────────────────
+function pasteFilesFromClipboard() {
+  const ps = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$f = Get-Clipboard -Format FileDropList; if ($f) { $f.FullName -join '\\n' } else { '' }"`;
+  exec(ps, (err, stdout) => {
+    if (err || !stdout.trim()) { showMessage('No files in clipboard'); return; }
+    const files = stdout.trim().split('\n').map(f => f.trim()).filter(Boolean);
+    let done = 0, failed = 0;
+    files.forEach(src => {
+      const name = path.basename(src);
+      if (remoteMode && sftpSession) {
+        const rp = remoteCwd + '/' + name;
+        sftpSession.fastPut(src, rp, (ue) => {
+          if (ue) failed++; else done++;
+          if (done + failed === files.length) {
+            showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : '') + ` → ${remoteHost}`);
+            refreshRemote();
+          }
+        });
+      } else {
+        const dest = path.join(panel.cwd, name);
+        try { fs.copyFileSync(src, dest); done++; } catch { failed++; }
+        if (done + failed === files.length) {
+          showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : ''));
+          render();
+        }
+      }
+    });
+  });
+}
+
 // ── File Watcher (auto-refresh on changes) ──────────────
 let watcher = null;
 function watchDir() {
@@ -830,6 +860,12 @@ function watchDir() {
 screen.on('keypress', (ch, key) => {
   if (!key) return;
   if (dialogOpen) return;  // Block ALL keys while dialog/menu is open
+
+  // Ctrl+V — paste files from clipboard
+  if (key.ctrl && key.name === 'v') {
+    pasteFilesFromClipboard();
+    return;
+  }
 
   // Alt+Shift+C — copy path (works with c, C, ㅊ for Korean IME)
   if (key.meta && key.shift && (key.name === 'c' || ch === 'C' || ch === 'ㅊ')) {
