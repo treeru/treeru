@@ -9,16 +9,12 @@ echo   TreeRU Installer v1.0
 echo   Terminal File Explorer
 echo.
 
-:: ── Admin check ──
+:: ── Admin auto-elevate ──
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [!] Administrator privileges required.
-    echo     Right-click, Run as administrator
-    echo.
-    echo [!] 관리자 권한이 필요합니다.
-    echo     우클릭 후 '관리자 권한으로 실행'을 선택해주세요.
-    echo.
-    pause
+    echo   Requesting administrator privileges...
+    echo   관리자 권한을 요청합니다...
+    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\"\"' -Verb RunAs"
     endlocal
     exit
 )
