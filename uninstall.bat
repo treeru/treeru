@@ -11,7 +11,7 @@ net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo [!] Administrator privileges required.
     pause
-    exit /b 1
+    goto :eof
 )
 
 set "INSTALL_DIR=%ProgramFiles%\TreeRU"
@@ -19,7 +19,7 @@ set "INSTALL_DIR=%ProgramFiles%\TreeRU"
 if not exist "%INSTALL_DIR%" (
     echo [!] TreeRU is not installed.
     pause
-    exit /b 1
+    goto :eof
 )
 
 echo Uninstall TreeRU?
@@ -29,7 +29,7 @@ set /p confirm="Press Y to confirm: "
 if /i not "%confirm%"=="Y" (
     echo Cancelled.
     pause
-    exit /b 0
+    goto :eof
 )
 
 echo.

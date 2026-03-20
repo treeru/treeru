@@ -15,7 +15,7 @@ if %errorlevel% neq 0 (
     echo     Right-click, Run as administrator
     echo.
     pause
-    exit /b 1
+    goto :eof
 )
 
 :: ── Install path ──
@@ -60,7 +60,7 @@ if not exist "%NODE_MSI%" (
     echo     Install manually: https://nodejs.org
     echo.
     pause
-    exit /b 1
+    goto :eof
 )
 
 echo       Installing...
@@ -69,7 +69,7 @@ if %errorlevel% neq 0 (
     echo [X] Install failed!
     echo     Install manually: https://nodejs.org
     pause
-    exit /b 1
+    goto :eof
 )
 del "%NODE_MSI%" >nul 2>&1
 set "PATH=%ProgramFiles%\nodejs;%PATH%"
