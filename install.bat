@@ -122,10 +122,16 @@ powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('PATH',
 
 echo.
 echo   Installation complete!
+echo   Installed: %INSTALL_DIR%\treeru.bat
 echo.
 echo   Open a new terminal and run:
 echo     treeru
 echo     treeru C:\path\to\folder
+echo.
+echo   -----------------------------------------------
+echo   설치가 완료되었습니다!
+echo   새 터미널을 열고 treeru 를 입력하세요.
+echo   -----------------------------------------------
 echo.
 pause
 endlocal
