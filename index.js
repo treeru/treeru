@@ -229,7 +229,7 @@ const fnBar = blessed.box({
 // Status bar
 const statusBar = blessed.box({
   parent: screen, bottom: 1, left: 0, width: '100%', height: 1,
-  tags: true, style: { bg: C.header, fg: 'gray' },
+  tags: true, style: { bg: C.header, fg: '#87AFD7' },
 });
 
 // Path prompt bar (Far Manager style)
