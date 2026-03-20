@@ -121,10 +121,11 @@ powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('PATH',
 
 echo.
 
-:: ── Desktop shortcut ──
-echo [5/5] Creating desktop shortcut...
+:: ── Shortcuts ──
+echo [5/5] Creating shortcuts...
 
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Desktop shortcut created'"
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%SCRIPT_DIR%TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Local shortcut created'"
 
 echo.
 echo   ===============================================
