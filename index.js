@@ -449,6 +449,7 @@ function renderStatus() {
 
 function renderFnBar() {
   const items = [
+    '{white-fg}{bold}F2{/}{#87AFD7-fg} Rename{/}',
     '{white-fg}{bold}F5{/}{#87AFD7-fg} Paste{/}',
     '{white-fg}{bold}F7{/}{#87AFD7-fg} NewDir{/}',
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
