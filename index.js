@@ -3,7 +3,12 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { exec } = require('child_process');
-const { version: APP_VERSION } = require('./package.json');
+const APP_VERSION = (() => {
+  try {
+    const line = fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8').split('\n')[0];
+    return line.split(' - ')[0].trim();
+  } catch { return '0'; }
+})();
 const { Client: SSHClient } = require('ssh2');
 const { readFileSync, appendFileSync } = require('fs');
 
