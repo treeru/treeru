@@ -84,17 +84,20 @@ echo [3/5] Installing TreeRU...
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
+:: Source files are in app/ subfolder
+set "APP_DIR=%SCRIPT_DIR%app\"
+
 :: Copy all required files
-xcopy /Y /Q "%SCRIPT_DIR%index.js" "%INSTALL_DIR%\" >nul
-xcopy /Y /Q "%SCRIPT_DIR%package.json" "%INSTALL_DIR%\" >nul
-xcopy /Y /Q "%SCRIPT_DIR%CHANGELOG.md" "%INSTALL_DIR%\" >nul
-xcopy /Y /Q "%SCRIPT_DIR%clip_check.ps1" "%INSTALL_DIR%\" >nul
-xcopy /Y /Q "%SCRIPT_DIR%clip_save.ps1" "%INSTALL_DIR%\" >nul
-xcopy /Y /Q "%SCRIPT_DIR%treeru.ico" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%APP_DIR%index.js" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%APP_DIR%package.json" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%APP_DIR%CHANGELOG.md" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%APP_DIR%clip_check.ps1" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%APP_DIR%clip_save.ps1" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%APP_DIR%treeru.ico" "%INSTALL_DIR%\" >nul
 
 :: Copy node_modules or install
-if exist "%SCRIPT_DIR%node_modules" (
-    xcopy /E /Y /Q "%SCRIPT_DIR%node_modules" "%INSTALL_DIR%\node_modules\" >nul
+if exist "%APP_DIR%node_modules" (
+    xcopy /E /Y /Q "%APP_DIR%node_modules" "%INSTALL_DIR%\node_modules\" >nul
 ) else (
     pushd "%INSTALL_DIR%"
     call npm install --production >nul 2>&1
