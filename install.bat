@@ -15,6 +15,9 @@ if %errorlevel% neq 0 (
     echo [!] Administrator privileges required.
     echo     Right-click, Run as administrator
     echo.
+    echo [!] 관리자 권한이 필요합니다.
+    echo     우클릭 후 '관리자 권한으로 실행'을 선택해주세요.
+    echo.
     pause
     endlocal
     exit
