@@ -441,20 +441,21 @@ function renderPathBar() {
     prompt = `${panel.cwd}>`;
   }
   pathBar.setContent(prompt);
-
-  // Position cursor at end of prompt
-  const absX = pathBar.aleft + prompt.length;
-  const absY = pathBar.atop;
-  screen.program.move(absX, absY);
-  screen.program.showCursor();
 }
 
 function render() {
   renderPanel();
   renderHeader();
   renderStatus();
-  screen.render();
   renderPathBar();
+  screen.render();
+
+  // Position cursor at end of path prompt (must be after screen.render)
+  const prompt = pathBar.getContent();
+  const absX = pathBar.aleft + blessed.unicode.strWidth(prompt);
+  const absY = pathBar.atop;
+  screen.program.move(absX, absY);
+  screen.program.showCursor();
 }
 
 // ── Dialogs ─────────────────────────────────────────────
@@ -840,6 +841,20 @@ screen.on('keypress', (ch, key) => {
     case 'j':
       if (panel.selectedIndex < panel.entries.length - 1) { panel.selectedIndex++; render(); }
       break;
+    case 'right':
+    case 'l': {
+      const ih = Math.max(1, fileBox.height - 2);
+      const next = panel.selectedIndex + ih;
+      if (next < panel.entries.length) { panel.selectedIndex = next; render(); }
+      break;
+    }
+    case 'left':
+    case 'h': {
+      const ih = Math.max(1, fileBox.height - 2);
+      const prev = panel.selectedIndex - ih;
+      if (prev >= 0) { panel.selectedIndex = prev; render(); }
+      break;
+    }
     case 'pageup':
       panel.selectedIndex = Math.max(0, panel.selectedIndex - (fileBox.height - 2));
       render();
