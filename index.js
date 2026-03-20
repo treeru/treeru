@@ -349,13 +349,14 @@ function formatCell(entry, selected, colWidth) {
   return `${color}${cellContent}${' '.repeat(padLen)}{/}`;
 }
 
-function getFileInfo(fp) {
-  if (remoteMode) return '';
+function getFileInfo(name, fp) {
+  if (remoteMode) return name;
   try {
     const s = fs.statSync(fp);
     const sz = s.isDirectory() ? '<DIR>' : formatSize(s.size);
-    return `${sz}  ${s.mtime.toLocaleDateString()}`;
-  } catch { return ''; }
+    const d = s.mtime.toISOString().slice(0, 16).replace('T', ' ');
+    return `${name}  ${sz}  ${d}`;
+  } catch { return name; }
 }
 
 function formatSize(b) {
@@ -434,10 +435,12 @@ function renderHeader() {
 function renderStatus() {
   const entry = panel.entries[panel.selectedIndex];
   let left = '';
-  if (entry && entry.name !== '..' && !remoteMode) {
-    left = ` ${getFileInfo(path.join(panel.cwd, entry.name))}`;
-  } else if (remoteMode) {
-    left = ` ${remoteUser}@${remoteHost}:${remoteCwd}`;
+  if (entry && entry.name !== '..') {
+    if (remoteMode) {
+      left = ` ${entry.name}`;
+    } else {
+      left = ` ${getFileInfo(entry.name, path.join(panel.cwd, entry.name))}`;
+    }
   }
   const idx = panel.entries.length > 0 ? `${panel.selectedIndex + 1}/${panel.entries.length}` : '0/0';
   const pad = Math.max(0, screen.width - left.length - idx.length - 1);
