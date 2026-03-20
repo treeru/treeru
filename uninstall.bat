@@ -38,7 +38,7 @@ rmdir /S /Q "%INSTALL_DIR%" >nul 2>&1
 echo       Done
 
 echo [2/2] Removing from PATH...
-powershell -Command "$p=[Environment]::GetEnvironmentVariable('PATH','Machine'); $p=$p.Replace(';%INSTALL_DIR%','').Replace('%INSTALL_DIR%;','').Replace('%INSTALL_DIR%',''); [Environment]::SetEnvironmentVariable('PATH',$p,'Machine')"
+powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('PATH','Machine'); $parts=$p.Split(';') | Where-Object { $_ -ne '%INSTALL_DIR%' }; $newPath=$parts -join ';'; [Environment]::SetEnvironmentVariable('PATH',$newPath,'Machine')"
 echo       Done
 
 echo.

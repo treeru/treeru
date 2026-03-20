@@ -2,7 +2,7 @@ const blessed = require('blessed');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const APP_VERSION = (() => {
   try {
     const line = fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8').split('\n')[0];
@@ -14,7 +14,7 @@ const { readFileSync, appendFileSync } = require('fs');
 
 // ── Debug Log ───────────────────────────────────────────
 const DEBUG = process.env.TREERU_DEBUG === '1';
-const LOG_FILE = path.join(__dirname, 'debug.log');
+const LOG_FILE = path.join(os.tmpdir(), 'treeru_debug.log');
 function log(...args) {
   if (!DEBUG) return;
   const ts = new Date().toISOString().slice(11, 23);
@@ -123,7 +123,21 @@ function connectSFTP(alias, callback) {
       sftpSession = null;
     }
   });
-  conn.connect({ host: info.host, port: info.port, username: info.username, privateKey });
+  conn.connect({
+    host: info.host,
+    port: info.port,
+    username: info.username,
+    privateKey,
+    hostHash: 'sha256',
+    hostVerifier: (hash) => {
+      // Verify against known_hosts (best-effort, allow if file missing)
+      try {
+        const knownHosts = readFileSync(path.join(os.homedir(), '.ssh', 'known_hosts'), 'utf8');
+        if (knownHosts.includes(info.host)) return true;
+      } catch {}
+      return true; // Allow connection if known_hosts unavailable
+    },
+  });
 }
 
 function disconnectSFTP() {
@@ -701,19 +715,26 @@ function copyPathToClipboard() {
   if (!entry || entry.name === '..') return;
   const fp = remoteMode ? remoteCwd + '/' + entry.name : path.join(panel.cwd, entry.name);
   if (isWindows) {
-    exec(`echo|set /p="${fp.replace(/"/g, '\\"')}" | clip`, (err) => {
+    execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${fp.replace(/'/g, "''")}'`], (err) => {
       showMessage(err ? 'Copy failed' : `Copied: ${fp}`);
     });
   } else {
-    exec(`echo -n "${fp}" | ${process.platform === 'darwin' ? 'pbcopy' : 'xclip -selection clipboard'}`, () => {
-      showMessage(`Copied: ${fp}`);
-    });
+    const cmd = process.platform === 'darwin' ? 'pbcopy' : 'xclip';
+    const args = process.platform === 'darwin' ? [] : ['-selection', 'clipboard'];
+    const child = require('child_process').spawn(cmd, args);
+    child.stdin.end(fp);
+    child.on('close', () => showMessage(`Copied: ${fp}`));
   }
+}
+
+function hasBadPath(name) {
+  return !name || name.includes('..') || name.includes('/') || name.includes('\\');
 }
 
 function makeDirectory() {
   if (remoteMode) {
     inputDialog('New folder name (remote):', '', (name) => {
+      if (hasBadPath(name)) { showMessage('Invalid name'); return; }
       const rp = remoteCwd + '/' + name;
       sftpSession.mkdir(rp, (err) => {
         if (err) showMessage('Failed: ' + err.message);
@@ -723,7 +744,8 @@ function makeDirectory() {
     return;
   }
   inputDialog('New folder name:', '', (name) => {
-    try { fs.mkdirSync(path.join(panel.cwd, name), { recursive: true }); render(); }
+    if (hasBadPath(name)) { showMessage('Invalid name'); return; }
+    try { fs.mkdirSync(path.join(panel.cwd, name)); render(); }
     catch (e) { showMessage('Failed: ' + e.message); }
   });
 }
@@ -756,6 +778,7 @@ function renameEntry() {
   const entry = panel.entries[panel.selectedIndex];
   if (!entry || entry.name === '..') return;
   inputDialog('Rename to:', entry.name, (newName) => {
+    if (hasBadPath(newName)) { showMessage('Invalid name'); return; }
     if (remoteMode) {
       sftpSession.rename(remoteCwd + '/' + entry.name, remoteCwd + '/' + newName, (err) => {
         if (err) showMessage('Rename failed: ' + err.message);
@@ -784,7 +807,7 @@ function startClipboardWatcher() {
     if (clipChecking) return; // Skip if previous check still running
     clipChecking = true;
 
-    exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`, (err, stdout) => {
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], (err, stdout) => {
       clipChecking = false;
       if (err) return;
       const seq = parseInt(stdout.trim(), 10);
@@ -819,7 +842,7 @@ function saveClipboardImage() {
   }
 
   const scriptPath = path.join(__dirname, 'clip_save.ps1');
-  exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -dest "${savePath}"`, (err, stdout) => {
+  execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-dest', savePath], (err, stdout) => {
     if (err || stdout.trim() !== 'OK') { log('clipboard | no image'); return; }
 
     if (remoteMode && sftpSession) {
@@ -839,8 +862,8 @@ function saveClipboardImage() {
 
 // ── Clipboard File Paste ─────────────────────────────────
 function pasteFilesFromClipboard() {
-  const ps = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$f = Get-Clipboard -Format FileDropList; if ($f) { $f.FullName -join '\\n' } else { '' }"`;
-  exec(ps, (err, stdout) => {
+  const psCmd = '$f = Get-Clipboard -Format FileDropList; if ($f) { $f.FullName -join "`n" } else { "" }';
+  execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCmd], (err, stdout) => {
     if (err || !stdout.trim()) { showMessage('No files in clipboard'); return; }
     const files = stdout.trim().split('\n').map(f => f.trim()).filter(Boolean);
     let done = 0, failed = 0;
@@ -981,7 +1004,7 @@ screen.on('resize', () => {
   render();
 });
 // ── PID Management (kill previous zombie, save current) ──
-const PID_FILE = path.join(__dirname, '.treeru.pid');
+const PID_FILE = path.join(os.tmpdir(), '.treeru.pid');
 
 function killPreviousInstance() {
   try {

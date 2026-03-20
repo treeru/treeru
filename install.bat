@@ -106,14 +106,16 @@ if exist "%~dp0node_modules" (
 echo       Files copied
 echo.
 
-:: ── PATH ──
+:: ── PATH (read machine PATH only, not session PATH) ──
 echo [4/4] Registering PATH...
 
-echo %PATH% | find /I "TreeRU" >nul
+for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "MACHINE_PATH=%%b"
+
+echo %MACHINE_PATH% | find /I "TreeRU" >nul
 if %errorlevel% equ 0 (
     echo       Already in PATH
 ) else (
-    setx PATH "%PATH%;%INSTALL_DIR%" /M >nul 2>&1
+    setx PATH "%MACHINE_PATH%;%INSTALL_DIR%" /M >nul 2>&1
     if %errorlevel% equ 0 (
         echo       PATH registered
     ) else (
