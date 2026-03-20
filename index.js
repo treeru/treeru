@@ -446,10 +446,10 @@ function renderStatus() {
 
 function renderFnBar() {
   const items = [
-    '{white-fg}{bold}F5{/} Paste',
-    '{white-fg}{bold}F7{/} NewDir',
-    '{white-fg}{bold}F10{/} SSH',
-    '{white-fg}{bold}PrtSc{/} AutoCapture',
+    '{white-fg}{bold}F5{/}{gray-fg} Paste{/}',
+    '{white-fg}{bold}F7{/}{gray-fg} NewDir{/}',
+    '{white-fg}{bold}F10{/}{gray-fg} SSH{/}',
+    '{white-fg}{bold}PrtSc{/}{gray-fg} AutoCapture{/}',
   ];
   fnBar.setContent(` ${items.join('  ')}`);
 }
