@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 title TreeRU Installer
 color 0A
@@ -15,11 +16,13 @@ if %errorlevel% neq 0 (
     echo     Right-click, Run as administrator
     echo.
     pause
-    goto :eof
+    endlocal
+    exit
 )
 
 :: ── Install path ──
 set "INSTALL_DIR=%ProgramFiles%\TreeRU"
+set "SCRIPT_DIR=%~dp0"
 echo [1/4] Install path: %INSTALL_DIR%
 echo.
 
@@ -28,7 +31,7 @@ echo [2/4] Checking Node.js...
 where node >nul 2>&1
 if %errorlevel% equ 0 (
     for /f "tokens=*" %%i in ('node --version') do set NODE_VER=%%i
-    echo       Node.js %NODE_VER% found
+    echo       Node.js !NODE_VER! found
     echo.
     goto :install_treeru
 )
@@ -60,7 +63,8 @@ if not exist "%NODE_MSI%" (
     echo     Install manually: https://nodejs.org
     echo.
     pause
-    goto :eof
+    endlocal
+    exit
 )
 
 echo       Installing...
@@ -69,7 +73,8 @@ if %errorlevel% neq 0 (
     echo [X] Install failed!
     echo     Install manually: https://nodejs.org
     pause
-    goto :eof
+    endlocal
+    exit
 )
 del "%NODE_MSI%" >nul 2>&1
 set "PATH=%ProgramFiles%\nodejs;%PATH%"
@@ -82,14 +87,15 @@ echo [3/4] Installing TreeRU...
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
 :: Copy all required files
-xcopy /Y /Q "%~dp0index.js" "%INSTALL_DIR%\" >nul
-xcopy /Y /Q "%~dp0package.json" "%INSTALL_DIR%\" >nul
-xcopy /Y /Q "%~dp0clip_check.ps1" "%INSTALL_DIR%\" >nul
-xcopy /Y /Q "%~dp0clip_save.ps1" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%SCRIPT_DIR%index.js" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%SCRIPT_DIR%package.json" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%SCRIPT_DIR%CHANGELOG.md" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%SCRIPT_DIR%clip_check.ps1" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%SCRIPT_DIR%clip_save.ps1" "%INSTALL_DIR%\" >nul
 
 :: Copy node_modules or install
-if exist "%~dp0node_modules" (
-    xcopy /E /Y /Q "%~dp0node_modules" "%INSTALL_DIR%\node_modules\" >nul
+if exist "%SCRIPT_DIR%node_modules" (
+    xcopy /E /Y /Q "%SCRIPT_DIR%node_modules" "%INSTALL_DIR%\node_modules\" >nul
 ) else (
     pushd "%INSTALL_DIR%"
     call npm install --production >nul 2>&1
@@ -106,23 +112,10 @@ if exist "%~dp0node_modules" (
 echo       Files copied
 echo.
 
-:: ── PATH (read machine PATH only, not session PATH) ──
+:: ── PATH (use PowerShell to avoid setx 1024-char limit) ──
 echo [4/4] Registering PATH...
 
-for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "MACHINE_PATH=%%b"
-
-echo %MACHINE_PATH% | find /I "TreeRU" >nul
-if %errorlevel% equ 0 (
-    echo       Already in PATH
-) else (
-    setx PATH "%MACHINE_PATH%;%INSTALL_DIR%" /M >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo       PATH registered
-    ) else (
-        echo       [!] PATH registration failed
-        echo           Add manually: %INSTALL_DIR%
-    )
-)
+powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('PATH','Machine'); if ($p -notlike '*TreeRU*') { [Environment]::SetEnvironmentVariable('PATH', $p + ';%INSTALL_DIR%', 'Machine'); Write-Host '      PATH registered' } else { Write-Host '      Already in PATH' }"
 
 echo.
 echo   Installation complete!
@@ -132,3 +125,5 @@ echo     treeru
 echo     treeru C:\path\to\folder
 echo.
 pause
+endlocal
+exit

@@ -1,4 +1,5 @@
 @echo off
+setlocal
 chcp 65001 >nul 2>&1
 title TreeRU Uninstaller
 color 0C
@@ -11,7 +12,8 @@ net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo [!] Administrator privileges required.
     pause
-    goto :eof
+    endlocal
+    exit
 )
 
 set "INSTALL_DIR=%ProgramFiles%\TreeRU"
@@ -19,7 +21,8 @@ set "INSTALL_DIR=%ProgramFiles%\TreeRU"
 if not exist "%INSTALL_DIR%" (
     echo [!] TreeRU is not installed.
     pause
-    goto :eof
+    endlocal
+    exit
 )
 
 echo Uninstall TreeRU?
@@ -29,7 +32,8 @@ set /p confirm="Press Y to confirm: "
 if /i not "%confirm%"=="Y" (
     echo Cancelled.
     pause
-    goto :eof
+    endlocal
+    exit
 )
 
 echo.
@@ -45,3 +49,5 @@ echo.
 echo TreeRU has been removed.
 echo.
 pause
+endlocal
+exit
