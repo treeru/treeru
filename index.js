@@ -214,10 +214,16 @@ const headerBar = blessed.box({
 
 // Main file panel (full width)
 const fileBox = blessed.box({
-  parent: screen, top: 1, left: 0, width: '100%', height: '100%-3',
+  parent: screen, top: 1, left: 0, width: '100%', height: '100%-4',
   border: { type: 'line' }, label: ' TreeRU ', tags: true,
   scrollable: true, mouse: true,
   style: { border: { fg: C.border }, label: { fg: C.borderHi, bold: true } },
+});
+
+// Function key bar (bottom)
+const fnBar = blessed.box({
+  parent: screen, bottom: 2, left: 0, width: '100%', height: 1,
+  tags: true, style: { bg: C.header, fg: 'gray' },
 });
 
 // Status bar
@@ -438,6 +444,16 @@ function renderStatus() {
   statusBar.setContent(`${left}${' '.repeat(pad)}${idx} `);
 }
 
+function renderFnBar() {
+  const items = [
+    '{white-fg}{bold}F5{/} Paste',
+    '{white-fg}{bold}F7{/} NewDir',
+    '{white-fg}{bold}F10{/} SSH',
+    '{white-fg}{bold}PrtSc{/} AutoCapture',
+  ];
+  fnBar.setContent(` ${items.join('  ')}`);
+}
+
 function renderPathBar() {
   let prompt;
   if (remoteMode) {
@@ -452,6 +468,7 @@ function render() {
   renderPanel();
   renderHeader();
   renderStatus();
+  renderFnBar();
   renderPathBar();
   screen.render();
 
@@ -861,12 +878,6 @@ screen.on('keypress', (ch, key) => {
   if (!key) return;
   if (dialogOpen) return;  // Block ALL keys while dialog/menu is open
 
-  // Ctrl+V — paste files from clipboard
-  if (key.ctrl && key.name === 'v') {
-    pasteFilesFromClipboard();
-    return;
-  }
-
   // Alt+Shift+C — copy path (works with c, C, ㅊ for Korean IME)
   if (key.meta && key.shift && (key.name === 'c' || ch === 'C' || ch === 'ㅊ')) {
     copyPathToClipboard();
@@ -920,6 +931,9 @@ screen.on('keypress', (ch, key) => {
       break;
     case 'f2':
       renameEntry();
+      break;
+    case 'f5':
+      pasteFilesFromClipboard();
       break;
     case 'f7':
       makeDirectory();
