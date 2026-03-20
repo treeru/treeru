@@ -37,13 +37,16 @@ if /i not "%confirm%"=="Y" (
 )
 
 echo.
-echo [1/2] Removing files...
+echo [1/3] Removing files...
 rmdir /S /Q "%INSTALL_DIR%" >nul 2>&1
 echo       Done
 
-echo [2/2] Removing from PATH...
+echo [2/3] Removing from PATH...
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('PATH','Machine'); $parts=$p.Split(';') | Where-Object { $_ -ne '%INSTALL_DIR%' }; $newPath=$parts -join ';'; [Environment]::SetEnvironmentVariable('PATH',$newPath,'Machine')"
 echo       Done
+
+echo [3/3] Removing desktop shortcut...
+powershell -NoProfile -Command "$lnk = [Environment]::GetFolderPath('Desktop') + '\TreeRU.lnk'; if (Test-Path $lnk) { Remove-Item $lnk -Force; Write-Host '      Done' } else { Write-Host '      Not found (skipped)' }"
 
 echo.
 echo TreeRU has been removed.

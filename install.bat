@@ -13,7 +13,6 @@ echo.
 net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo   Requesting administrator privileges...
-    echo   관리자 권한을 요청합니다...
     powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\"\"' -Verb RunAs"
     endlocal
     exit
@@ -22,11 +21,11 @@ if %errorlevel% neq 0 (
 :: ── Install path ──
 set "INSTALL_DIR=%ProgramFiles%\TreeRU"
 set "SCRIPT_DIR=%~dp0"
-echo [1/4] Install path: %INSTALL_DIR%
+echo [1/5] Install path: %INSTALL_DIR%
 echo.
 
 :: ── Node.js check ──
-echo [2/4] Checking Node.js...
+echo [2/5] Checking Node.js...
 where node >nul 2>&1
 if %errorlevel% equ 0 (
     for /f "tokens=*" %%i in ('node --version') do set NODE_VER=%%i
@@ -37,7 +36,7 @@ if %errorlevel% equ 0 (
 
 echo       Node.js not found.
 echo.
-echo [2/4] Installing Node.js...
+echo [2/5] Installing Node.js...
 
 where winget >nul 2>&1
 if %errorlevel% equ 0 (
@@ -81,7 +80,7 @@ echo       Node.js installed
 echo.
 
 :install_treeru
-echo [3/4] Installing TreeRU...
+echo [3/5] Installing TreeRU...
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
@@ -91,6 +90,7 @@ xcopy /Y /Q "%SCRIPT_DIR%package.json" "%INSTALL_DIR%\" >nul
 xcopy /Y /Q "%SCRIPT_DIR%CHANGELOG.md" "%INSTALL_DIR%\" >nul
 xcopy /Y /Q "%SCRIPT_DIR%clip_check.ps1" "%INSTALL_DIR%\" >nul
 xcopy /Y /Q "%SCRIPT_DIR%clip_save.ps1" "%INSTALL_DIR%\" >nul
+xcopy /Y /Q "%SCRIPT_DIR%treeru.ico" "%INSTALL_DIR%\" >nul
 
 :: Copy node_modules or install
 if exist "%SCRIPT_DIR%node_modules" (
@@ -111,23 +111,27 @@ if exist "%SCRIPT_DIR%node_modules" (
 echo       Files copied
 echo.
 
-:: ── PATH (use PowerShell to avoid setx 1024-char limit) ──
-echo [4/4] Registering PATH...
+:: ── PATH ──
+echo [4/5] Registering PATH...
 
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('PATH','Machine'); if ($p -notlike '*TreeRU*') { [Environment]::SetEnvironmentVariable('PATH', $p + ';%INSTALL_DIR%', 'Machine'); Write-Host '      PATH registered' } else { Write-Host '      Already in PATH' }"
 
 echo.
+
+:: ── Desktop shortcut ──
+echo [5/5] Creating desktop shortcut...
+
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Desktop shortcut created'"
+
+echo.
+echo   ===============================================
 echo   Installation complete!
-echo   Installed: %INSTALL_DIR%\treeru.bat
-echo.
-echo   Open a new terminal and run:
-echo     treeru
-echo     treeru C:\path\to\folder
-echo.
-echo   -----------------------------------------------
 echo   설치가 완료되었습니다!
+echo.
+echo   Open a new terminal and run: treeru
 echo   새 터미널을 열고 treeru 를 입력하세요.
-echo   -----------------------------------------------
+echo   또는 바탕화면의 TreeRU 아이콘을 클릭하세요.
+echo   ===============================================
 echo.
 pause
 endlocal
