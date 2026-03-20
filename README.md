@@ -22,9 +22,9 @@ Split your Windows Terminal (Ctrl+Shift+D) — one side for your terminal, the o
 
 ## Features
 
-- **Multi-column layout** — Far Manager style, responsive 2–4 columns based on terminal width
+- **Multi-column layout** — Far Manager style, responsive 2–4 columns based on terminal width. Navigate between columns with `←` `→` arrow keys
 - **SSH/SFTP remote browsing** — Press F10 to connect to servers from your `~/.ssh/config` (SSH key auth required)
-- **Clipboard image auto-save** — Take a screenshot (Snipaste, Win+Shift+S, etc.) and it auto-saves to the current folder (~2s delay, varies by system). Also uploads to remote folders via SSH
+- **Clipboard image auto-save** — Take a screenshot and it auto-saves to the current folder. Works with Windows 11 Print Screen, Snipaste, Win+Shift+S, and more. Also uploads to remote folders via SSH
 - **Path copy (Alt+Shift+C)** — Copy the full path of the selected file to clipboard. Handy for passing paths to AI CLI tools
 - **CJK filename support** — Correctly displays CJK (Korean, Japanese, Chinese) filenames
 - **Auto-refresh** — Automatically reflects local file changes
@@ -38,7 +38,7 @@ Split your Windows Terminal (Ctrl+Shift+D) — one side for your terminal, the o
 
 ### Manual
 ```bash
-git clone https://github.com/nicro296/treeru.git
+git clone https://github.com/treeru/treeru.git
 cd treeru
 npm install
 node index.js
@@ -58,6 +58,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | Key | Action |
 |---|---|
 | `↑` `↓` | Navigate files |
+| `←` `→` | Move between columns |
 | `Enter` | Enter directory |
 | `Backspace` | Go to parent directory |
 | `Alt+Shift+C` | Copy path to clipboard |
@@ -76,9 +77,14 @@ Select one to browse remote files via SFTP.
 
 ## Clipboard Auto-Paste
 
-When you copy a screenshot to the clipboard (using Snipaste, Windows Snip & Sketch, etc.),
-TreeRU automatically detects it and saves it as `screenshot_YYYY-MM-DDTHH-MM-SS.png` in the current folder.
+When you copy a screenshot to the clipboard, TreeRU automatically detects it and saves it as `screenshot_YYYY-MM-DDTHH-MM-SS.png` in the current folder.
 
+**Tested with:**
+- Windows 11 Print Screen (PrtSc)
+- Snipaste
+- Win+Shift+S (Snip & Sketch)
+
+**Save behavior:**
 - Local folder: saved immediately
 - SSH remote folder: auto-uploaded via SFTP
 - Delay: ~1–2 seconds (varies by system)
