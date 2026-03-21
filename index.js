@@ -1035,16 +1035,25 @@ screen.on('keypress', (ch, key) => {
       }
       break;
     case 'escape':
-      if (remoteMode) {
+      if (panel.marked.size > 0) {
+        // 1st: clear selection
+        panel.marked.clear();
+        render();
+      } else if (remoteMode) {
+        // 2nd: disconnect SSH
         disconnectSFTP();
         panel.cwd = path.resolve(process.argv[2] || process.cwd());
         panel.selectedIndex = 0;
         panel.scrollOffset = 0;
+        panel.marked.clear();
         watchDir();
         render();
       } else {
-        cleanup();
-        process.exit(0);
+        // 3rd: confirm quit
+        confirmDialog('Quit TreeRU?', () => {
+          cleanup();
+          process.exit(0);
+        });
       }
       break;
   }
