@@ -219,7 +219,7 @@ function truncW(s, tw) {
 }
 
 // ── Screen ──────────────────────────────────────────────
-const screen = blessed.screen({ smartCSR: true, title: 'TreeRU', fullUnicode: true });
+const screen = blessed.screen({ smartCSR: true, title: 'TreeRU', fullUnicode: true, mouse: true });
 
 // Header
 const headerBar = blessed.box({
