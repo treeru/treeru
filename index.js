@@ -941,15 +941,37 @@ function mouseToIndex(x, y) {
   return idx < panel.entries.length ? idx : -1;
 }
 
-fileBox.on('click', (mouse) => {
+let lastClickTime = 0;
+let lastClickIdx = -1;
+
+screen.on('mouse', (data) => {
   if (dialogOpen) return;
-  const x = mouse.x - fileBox.aleft - 1; // subtract border
-  const y = mouse.y - fileBox.atop - 1;
+  if (data.action !== 'mouseup') return;
+
+  // Check if click is inside fileBox
+  const pos = fileBox.lpos;
+  if (!pos) return;
+  if (data.x < pos.xi + 1 || data.x >= pos.xl - 1 || data.y < pos.yi + 1 || data.y >= pos.yl - 1) return;
+
+  const x = data.x - pos.xi - 1;
+  const y = data.y - pos.yi - 1;
   const idx = mouseToIndex(x, y);
   if (idx < 0) return;
 
-  if (mouse.shift) {
-    // Shift+Click: range select from current to clicked
+  // Double-click detection
+  const now = Date.now();
+  if (idx === lastClickIdx && now - lastClickTime < 400) {
+    lastClickTime = 0;
+    lastClickIdx = -1;
+    panel.selectedIndex = idx;
+    openEntry();
+    return;
+  }
+  lastClickTime = now;
+  lastClickIdx = idx;
+
+  if (data.shift) {
+    // Shift+Click: range select
     const from = Math.min(panel.selectedIndex, idx);
     const to = Math.max(panel.selectedIndex, idx);
     for (let i = from; i <= to; i++) {
@@ -957,8 +979,8 @@ fileBox.on('click', (mouse) => {
     }
     panel.selectedIndex = idx;
     render();
-  } else if (mouse.ctrl) {
-    // Ctrl+Click: toggle mark (like Space)
+  } else if (data.ctrl) {
+    // Ctrl+Click: toggle mark
     const entry = panel.entries[idx];
     if (entry && entry.name !== '..') {
       if (panel.marked.has(entry.name)) panel.marked.delete(entry.name);
@@ -971,16 +993,6 @@ fileBox.on('click', (mouse) => {
     panel.selectedIndex = idx;
     render();
   }
-});
-
-fileBox.on('dblclick', (mouse) => {
-  if (dialogOpen) return;
-  const x = mouse.x - fileBox.aleft - 1;
-  const y = mouse.y - fileBox.atop - 1;
-  const idx = mouseToIndex(x, y);
-  if (idx < 0) return;
-  panel.selectedIndex = idx;
-  openEntry();
 });
 
 // ── Key Bindings ────────────────────────────────────────
