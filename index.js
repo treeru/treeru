@@ -1,3 +1,5 @@
+// Force SGR mouse mode for Windows Terminal compatibility
+process.env.BLESSED_FORCE_MODES = 'SGRMOUSE=1,CELLMOTION=1,ALLMOTION=1';
 const blessed = require('blessed');
 const fs = require('fs');
 const path = require('path');
@@ -231,7 +233,7 @@ const headerBar = blessed.box({
 const fileBox = blessed.box({
   parent: screen, top: 1, left: 0, width: '100%', height: '100%-4',
   border: { type: 'line' }, label: ' TreeRU ', tags: true,
-  scrollable: true, mouse: true,
+  scrollable: true, mouse: true, clickable: true,
   style: { border: { fg: C.border }, label: { fg: C.borderHi, bold: true } },
 });
 
