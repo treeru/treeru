@@ -40,6 +40,7 @@ const panel = {
   entries: [],
   selectedIndex: 0,
   scrollOffset: 0,
+  marked: new Set(), // multi-select: stores entry names
 };
 let dialogOpen = false;
 
@@ -343,6 +344,7 @@ function getFileIcon(name) {
 
 function formatCell(entry, selected, colWidth) {
   const maxW = Math.max(1, colWidth - 4);
+  const marked = panel.marked.has(entry.name);
   let icon, color;
   if (entry.type === 'dir') { icon = '>'; color = '{cyan-fg}{bold}'; }
   else if (entry.type === 'symlink') { icon = '~'; color = '{magenta-fg}'; }
@@ -356,9 +358,15 @@ function formatCell(entry, selected, colWidth) {
   const cellW = 3 + strWidth(display);
   const padLen = Math.max(0, colWidth - cellW);
 
+  if (selected && marked) {
+    return `{black-fg}{yellow-bg}${cellContent}${' '.repeat(padLen)}{/}`;
+  }
   if (selected) {
     const bg = remoteMode ? '{#56B6C2-bg}' : '{green-bg}';
     return `{black-fg}${bg}${cellContent}${' '.repeat(padLen)}{/}`;
+  }
+  if (marked) {
+    return `{yellow-fg}{bold}${cellContent}${' '.repeat(padLen)}{/}`;
   }
   return `${color}${cellContent}${' '.repeat(padLen)}{/}`;
 }
@@ -456,13 +464,15 @@ function renderStatus() {
       left = ` ${getFileInfo(entry.name, path.join(panel.cwd, entry.name))}`;
     }
   }
-  const idx = panel.entries.length > 0 ? `${panel.selectedIndex + 1}/${panel.entries.length}` : '0/0';
+  const markedInfo = panel.marked.size > 0 ? `[${panel.marked.size} selected] ` : '';
+  const idx = panel.entries.length > 0 ? `${markedInfo}${panel.selectedIndex + 1}/${panel.entries.length}` : '0/0';
   const pad = Math.max(0, screen.width - left.length - idx.length - 1);
   statusBar.setContent(`${left}${' '.repeat(pad)}${idx} `);
 }
 
 function renderFnBar() {
   const items = [
+    '{white-fg}{bold}Space{/}{#87AFD7-fg} Select{/}',
     '{white-fg}{bold}F2{/}{#87AFD7-fg} Rename{/}',
     '{white-fg}{bold}F5{/}{#87AFD7-fg} Paste{/}',
     '{white-fg}{bold}F7{/}{#87AFD7-fg} NewDir{/}',
@@ -639,6 +649,7 @@ function refreshRemote(callback) {
     panel.cwd = `${remoteUser}@${remoteHost}:${remoteCwd}`;
     panel.selectedIndex = 0;
     panel.scrollOffset = 0;
+    panel.marked.clear();
     render();
     if (callback) callback(null);
   });
@@ -682,6 +693,7 @@ function navigate(dir) {
     panel.cwd = path.resolve(dir);
     panel.selectedIndex = 0;
     panel.scrollOffset = 0;
+    panel.marked.clear();
     render();
   } catch {
     showMessage('Access denied: ' + dir);
@@ -711,19 +723,31 @@ function openEntry() {
 }
 
 function copyPathToClipboard() {
-  const entry = panel.entries[panel.selectedIndex];
-  if (!entry || entry.name === '..') return;
-  const fp = remoteMode ? remoteCwd + '/' + entry.name : path.join(panel.cwd, entry.name);
+  let paths = [];
+  if (panel.marked.size > 0) {
+    // Copy all marked files
+    panel.entries.forEach(e => {
+      if (panel.marked.has(e.name)) {
+        paths.push(remoteMode ? remoteCwd + '/' + e.name : path.join(panel.cwd, e.name));
+      }
+    });
+  } else {
+    // Copy single selected file
+    const entry = panel.entries[panel.selectedIndex];
+    if (!entry || entry.name === '..') return;
+    paths.push(remoteMode ? remoteCwd + '/' + entry.name : path.join(panel.cwd, entry.name));
+  }
+  const text = paths.join(', ');
   if (isWindows) {
-    execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${fp.replace(/'/g, "''")}'`], (err) => {
-      showMessage(err ? 'Copy failed' : `Copied: ${fp}`);
+    execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`], (err) => {
+      showMessage(err ? 'Copy failed' : `Copied ${paths.length} path(s)`);
     });
   } else {
     const cmd = process.platform === 'darwin' ? 'pbcopy' : 'xclip';
     const args = process.platform === 'darwin' ? [] : ['-selection', 'clipboard'];
     const child = require('child_process').spawn(cmd, args);
-    child.stdin.end(fp);
-    child.on('close', () => showMessage(`Copied: ${fp}`));
+    child.stdin.end(text);
+    child.on('close', () => showMessage(`Copied ${paths.length} path(s)`));
   }
 }
 
@@ -913,14 +937,42 @@ screen.on('keypress', (ch, key) => {
     return;
   }
 
+  // Space — toggle mark current file and move down
+  if (ch === ' ') {
+    const entry = panel.entries[panel.selectedIndex];
+    if (entry && entry.name !== '..') {
+      if (panel.marked.has(entry.name)) panel.marked.delete(entry.name);
+      else panel.marked.add(entry.name);
+    }
+    if (panel.selectedIndex < panel.entries.length - 1) panel.selectedIndex++;
+    render();
+    return;
+  }
+
   switch (key.name) {
     case 'up':
     case 'k':
-      if (panel.selectedIndex > 0) { panel.selectedIndex--; render(); }
+      if (key.shift && panel.selectedIndex > 0) {
+        // Shift+Up — mark current then move up
+        const entry = panel.entries[panel.selectedIndex];
+        if (entry && entry.name !== '..') panel.marked.add(entry.name);
+        panel.selectedIndex--;
+        const prev = panel.entries[panel.selectedIndex];
+        if (prev && prev.name !== '..') panel.marked.add(prev.name);
+        render();
+      } else if (panel.selectedIndex > 0) { panel.selectedIndex--; render(); }
       break;
     case 'down':
     case 'j':
-      if (panel.selectedIndex < panel.entries.length - 1) { panel.selectedIndex++; render(); }
+      if (key.shift && panel.selectedIndex < panel.entries.length - 1) {
+        // Shift+Down — mark current then move down
+        const entry = panel.entries[panel.selectedIndex];
+        if (entry && entry.name !== '..') panel.marked.add(entry.name);
+        panel.selectedIndex++;
+        const next = panel.entries[panel.selectedIndex];
+        if (next && next.name !== '..') panel.marked.add(next.name);
+        render();
+      } else if (panel.selectedIndex < panel.entries.length - 1) { panel.selectedIndex++; render(); }
       break;
     case 'right':
     case 'l': {
