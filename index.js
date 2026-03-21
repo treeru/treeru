@@ -945,55 +945,84 @@ function mouseToIndex(x, y) {
 
 let lastClickTime = 0;
 let lastClickIdx = -1;
+let dragStartIdx = -1;
+let isDragging = false;
+
+function mouseHitTest(data) {
+  const pos = fileBox.lpos;
+  if (!pos) return -1;
+  if (data.x < pos.xi + 1 || data.x >= pos.xl - 1 || data.y < pos.yi + 1 || data.y >= pos.yl - 1) return -1;
+  return mouseToIndex(data.x - pos.xi - 1, data.y - pos.yi - 1);
+}
 
 screen.on('mouse', (data) => {
   if (dialogOpen) return;
-  if (data.action !== 'mouseup') return;
 
-  // Check if click is inside fileBox
-  const pos = fileBox.lpos;
-  if (!pos) return;
-  if (data.x < pos.xi + 1 || data.x >= pos.xl - 1 || data.y < pos.yi + 1 || data.y >= pos.yl - 1) return;
+  if (data.action === 'mousedown') {
+    const idx = mouseHitTest(data);
+    if (idx < 0) return;
+    dragStartIdx = idx;
+    isDragging = false;
 
-  const x = data.x - pos.xi - 1;
-  const y = data.y - pos.yi - 1;
-  const idx = mouseToIndex(x, y);
-  if (idx < 0) return;
-
-  // Double-click detection
-  const now = Date.now();
-  if (idx === lastClickIdx && now - lastClickTime < 400) {
-    lastClickTime = 0;
-    lastClickIdx = -1;
-    panel.selectedIndex = idx;
-    openEntry();
-    return;
+    if (data.ctrl) {
+      // Ctrl+Click: toggle mark
+      const entry = panel.entries[idx];
+      if (entry && entry.name !== '..') {
+        if (panel.marked.has(entry.name)) panel.marked.delete(entry.name);
+        else panel.marked.add(entry.name);
+      }
+      panel.selectedIndex = idx;
+      render();
+    } else if (!data.shift) {
+      panel.selectedIndex = idx;
+      render();
+    }
   }
-  lastClickTime = now;
-  lastClickIdx = idx;
 
-  if (data.shift) {
-    // Shift+Click: range select
-    const from = Math.min(panel.selectedIndex, idx);
-    const to = Math.max(panel.selectedIndex, idx);
+  if (data.action === 'mousemove' && dragStartIdx >= 0) {
+    const idx = mouseHitTest(data);
+    if (idx < 0) return;
+    isDragging = true;
+    // Drag select range
+    const from = Math.min(dragStartIdx, idx);
+    const to = Math.max(dragStartIdx, idx);
+    panel.marked.clear();
     for (let i = from; i <= to; i++) {
       if (panel.entries[i] && panel.entries[i].name !== '..') panel.marked.add(panel.entries[i].name);
     }
     panel.selectedIndex = idx;
     render();
-  } else if (data.ctrl) {
-    // Ctrl+Click: toggle mark
-    const entry = panel.entries[idx];
-    if (entry && entry.name !== '..') {
-      if (panel.marked.has(entry.name)) panel.marked.delete(entry.name);
-      else panel.marked.add(entry.name);
+  }
+
+  if (data.action === 'mouseup') {
+    const idx = mouseHitTest(data);
+    if (idx >= 0 && !isDragging && !data.ctrl) {
+      // Double-click detection
+      const now = Date.now();
+      if (idx === lastClickIdx && now - lastClickTime < 400) {
+        lastClickTime = 0;
+        lastClickIdx = -1;
+        panel.selectedIndex = idx;
+        openEntry();
+        dragStartIdx = -1;
+        return;
+      }
+      lastClickTime = now;
+      lastClickIdx = idx;
+
+      if (data.shift) {
+        // Shift+Click: range select
+        const from = Math.min(panel.selectedIndex, idx);
+        const to = Math.max(panel.selectedIndex, idx);
+        for (let i = from; i <= to; i++) {
+          if (panel.entries[i] && panel.entries[i].name !== '..') panel.marked.add(panel.entries[i].name);
+        }
+        panel.selectedIndex = idx;
+        render();
+      }
     }
-    panel.selectedIndex = idx;
-    render();
-  } else {
-    // Normal click: move cursor
-    panel.selectedIndex = idx;
-    render();
+    dragStartIdx = -1;
+    isDragging = false;
   }
 });
 
@@ -1107,11 +1136,11 @@ screen.on('keypress', (ch, key) => {
       break;
     case 'escape':
       if (panel.marked.size > 0) {
-        // 1st: clear selection
+        // Clear selection
         panel.marked.clear();
         render();
       } else if (remoteMode) {
-        // 2nd: disconnect SSH
+        // Disconnect SSH
         disconnectSFTP();
         panel.cwd = path.resolve(process.argv[2] || process.cwd());
         panel.selectedIndex = 0;
@@ -1119,12 +1148,6 @@ screen.on('keypress', (ch, key) => {
         panel.marked.clear();
         watchDir();
         render();
-      } else {
-        // 3rd: confirm quit
-        confirmDialog('Quit TreeRU?', () => {
-          cleanup();
-          process.exit(0);
-        });
       }
       break;
   }
