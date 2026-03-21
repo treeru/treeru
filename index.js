@@ -1009,17 +1009,6 @@ screen.on('mouse', (data) => {
       }
       lastClickTime = now;
       lastClickIdx = idx;
-
-      if (data.shift) {
-        // Shift+Click: range select
-        const from = Math.min(panel.selectedIndex, idx);
-        const to = Math.max(panel.selectedIndex, idx);
-        for (let i = from; i <= to; i++) {
-          if (panel.entries[i] && panel.entries[i].name !== '..') panel.marked.add(panel.entries[i].name);
-        }
-        panel.selectedIndex = idx;
-        render();
-      }
     }
     dragStartIdx = -1;
     isDragging = false;
