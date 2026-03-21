@@ -439,6 +439,9 @@ function renderPanel() {
     lines.push(line);
   }
   fileBox.setContent(lines.join('\n'));
+
+  // Store grid info for mouse click calculation
+  panel._grid = { ih, numCols, colWidth, pageStart };
 }
 
 function renderHeader() {
@@ -925,6 +928,60 @@ function watchDir() {
     });
   } catch {}
 }
+
+// ── Mouse ────────────────────────────────────────────────
+function mouseToIndex(x, y) {
+  if (!panel._grid) return -1;
+  const { ih, numCols, colWidth, pageStart } = panel._grid;
+  // x,y are relative to fileBox content area
+  const row = y;
+  const col = Math.floor(x / (colWidth + 1)); // +1 for separator
+  if (row < 0 || row >= ih || col < 0 || col >= numCols) return -1;
+  const idx = pageStart + col * ih + row;
+  return idx < panel.entries.length ? idx : -1;
+}
+
+fileBox.on('click', (mouse) => {
+  if (dialogOpen) return;
+  const x = mouse.x - fileBox.aleft - 1; // subtract border
+  const y = mouse.y - fileBox.atop - 1;
+  const idx = mouseToIndex(x, y);
+  if (idx < 0) return;
+
+  if (mouse.shift) {
+    // Shift+Click: range select from current to clicked
+    const from = Math.min(panel.selectedIndex, idx);
+    const to = Math.max(panel.selectedIndex, idx);
+    for (let i = from; i <= to; i++) {
+      if (panel.entries[i] && panel.entries[i].name !== '..') panel.marked.add(panel.entries[i].name);
+    }
+    panel.selectedIndex = idx;
+    render();
+  } else if (mouse.ctrl) {
+    // Ctrl+Click: toggle mark (like Space)
+    const entry = panel.entries[idx];
+    if (entry && entry.name !== '..') {
+      if (panel.marked.has(entry.name)) panel.marked.delete(entry.name);
+      else panel.marked.add(entry.name);
+    }
+    panel.selectedIndex = idx;
+    render();
+  } else {
+    // Normal click: move cursor
+    panel.selectedIndex = idx;
+    render();
+  }
+});
+
+fileBox.on('dblclick', (mouse) => {
+  if (dialogOpen) return;
+  const x = mouse.x - fileBox.aleft - 1;
+  const y = mouse.y - fileBox.atop - 1;
+  const idx = mouseToIndex(x, y);
+  if (idx < 0) return;
+  panel.selectedIndex = idx;
+  openEntry();
+});
 
 // ── Key Bindings ────────────────────────────────────────
 screen.on('keypress', (ch, key) => {
