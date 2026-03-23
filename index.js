@@ -477,6 +477,7 @@ function renderStatus() {
 
 function renderFnBar() {
   const items = [
+    '{white-fg}{bold}Enter{/}{#87AFD7-fg} Open/View{/}',
     '{white-fg}{bold}Space{/}{#87AFD7-fg} Select{/}',
     '{white-fg}{bold}F2{/}{#87AFD7-fg} Rename{/}',
     '{white-fg}{bold}F5{/}{#87AFD7-fg} Paste{/}',
@@ -725,6 +726,106 @@ function openEntry() {
   if (entry.name === '..') { navigate(path.dirname(panel.cwd)); return; }
   const fp = path.join(panel.cwd, entry.name);
   if (entry.type === 'dir') navigate(fp);
+  else if (isViewable(entry.name)) openViewer(fp, entry.name);
+}
+
+// ── File Viewer ──────────────────────────────────────────
+const VIEWABLE_EXT = new Set([
+  '.txt', '.md', '.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.go', '.rs',
+  '.java', '.c', '.h', '.cpp', '.hpp', '.cs', '.php', '.swift', '.kt',
+  '.json', '.yaml', '.yml', '.toml', '.xml', '.html', '.htm', '.css', '.scss',
+  '.sh', '.bash', '.zsh', '.bat', '.ps1', '.cmd',
+  '.conf', '.cfg', '.ini', '.env', '.gitignore', '.dockerignore',
+  '.csv', '.log', '.sql', '.graphql',
+  '.vue', '.svelte', '.astro',
+  '.makefile', '.dockerfile', '.editorconfig',
+  '.lock', '.pid', '.map',
+]);
+
+function isViewable(name) {
+  const ext = path.extname(name).toLowerCase();
+  const base = name.toLowerCase();
+  // Known extensionless files
+  if (['makefile', 'dockerfile', 'readme', 'license', 'changelog'].includes(base)) return true;
+  return VIEWABLE_EXT.has(ext);
+}
+
+function openViewer(fp, name) {
+  let content;
+  try {
+    const buf = fs.readFileSync(fp);
+    // Skip binary files (check for null bytes in first 8KB)
+    const sample = buf.slice(0, 8192);
+    if (sample.includes(0)) { showMessage('Binary file — cannot view'); return; }
+    content = buf.toString('utf8');
+  } catch (e) {
+    showMessage('Cannot read: ' + e.message);
+    return;
+  }
+
+  const lines = content.split('\n');
+  const lineNumW = String(lines.length).length;
+  const numbered = lines.map((l, i) => {
+    const num = String(i + 1).padStart(lineNumW);
+    return `{gray-fg}${num}{/} ${l.replace(/\{/g, '{open}').replace(/\{open\}/g, '{')}`;
+  });
+
+  dialogOpen = true;
+
+  const viewer = blessed.box({
+    parent: screen, top: 0, left: 0, width: '100%', height: '100%',
+    border: { type: 'line' }, tags: true,
+    scrollable: true, alwaysScroll: true, mouse: true, keys: true,
+    scrollbar: { ch: '█', style: { fg: 'gray' } },
+    style: { border: { fg: C.borderHi }, bg: 'black', fg: 'white' },
+    label: ` ${name} (${lines.length} lines) `,
+  });
+
+  // Plain text content with line numbers
+  const plainLines = lines.map((l, i) => {
+    const num = String(i + 1).padStart(lineNumW);
+    // Escape blessed tags in file content
+    const safe = l.replace(/\{/g, '\\{');
+    return `{gray-fg}${num}{/}{white-fg} ${safe}{/}`;
+  });
+  viewer.setContent(plainLines.join('\n'));
+
+  const hint = blessed.box({
+    parent: viewer, bottom: 0, left: 0, width: '100%', height: 1,
+    tags: true,
+    style: { bg: C.header, fg: '#87AFD7' },
+    content: ' {white-fg}{bold}ESC{/}{#87AFD7-fg} Close{/}  {white-fg}{bold}↑↓{/}{#87AFD7-fg} Scroll{/}  {white-fg}{bold}PgUp/PgDn{/}{#87AFD7-fg} Page{/}  {white-fg}{bold}Home/End{/}{#87AFD7-fg} Top/Bottom{/}',
+  });
+
+  const closeViewer = () => {
+    screen.removeListener('keypress', viewerKeys);
+    viewer.destroy();
+    dialogOpen = false;
+    render();
+  };
+
+  const viewerKeys = (ch, key) => {
+    if (!key) return;
+    if (key.name === 'escape' || key.name === 'q') {
+      closeViewer();
+    } else if (key.name === 'up' || key.name === 'k') {
+      viewer.scroll(-1); screen.render();
+    } else if (key.name === 'down' || key.name === 'j') {
+      viewer.scroll(1); screen.render();
+    } else if (key.name === 'pageup') {
+      viewer.scroll(-(viewer.height - 3)); screen.render();
+    } else if (key.name === 'pagedown') {
+      viewer.scroll(viewer.height - 3); screen.render();
+    } else if (key.name === 'home') {
+      viewer.scrollTo(0); screen.render();
+    } else if (key.name === 'end') {
+      viewer.scrollTo(lines.length); screen.render();
+    }
+  };
+
+  screen.on('keypress', viewerKeys);
+  viewer.focus();
+  screen.render();
 }
 
 function copyPathToClipboard() {
