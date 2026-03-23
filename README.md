@@ -23,9 +23,13 @@ Split your Windows Terminal (Ctrl+Shift+D) — one side for your terminal, the o
 ## Features
 
 - **Multi-column layout** — Far Manager style, responsive 2–4 columns based on terminal width. Navigate between columns with `←` `→` arrow keys
-- **SSH/SFTP remote browsing** — Press F10 to connect to servers from your `~/.ssh/config` (SSH key auth required)
-- **Clipboard image auto-save** — Take a screenshot and it auto-saves to the current folder. Works with Windows 11 Print Screen, Snipaste, Win+Shift+S, and more. Also uploads to remote folders via SSH
-- **Path copy (Alt+Shift+C)** — Copy the full path of the selected file to clipboard. Handy for passing paths to AI CLI tools
+- **File viewer** — Press `Enter` on a file to view with line numbers. Scroll, copy entire content (`C`), or open in Notepad (`F4`)
+- **Multi-select** — `Space` to toggle, `Shift+↑↓` for range select, mouse drag or `Ctrl+Click` for multiple files
+- **Mouse support** — Click to navigate, double-click to enter folder, drag to select, Ctrl+Click to toggle
+- **F5 File paste** — Copy files in Explorer (Ctrl+C) → paste in TreeRU with `F5`. Works with SSH remote folders
+- **SSH/SFTP remote browsing** — Press `F10` to connect to servers from your `~/.ssh/config` (SSH key auth required)
+- **Clipboard image auto-save** — Take a screenshot and it auto-saves to the current folder. Works with Windows 11 Print Screen, Snipaste, Win+Shift+S, and more
+- **Multi-path copy (Alt+Shift+C)** — Copy selected file paths (comma-separated). Handy for passing paths to AI CLI tools
 - **CJK filename support** — Correctly displays CJK (Korean, Japanese, Chinese) filenames
 - **Auto-refresh** — Automatically reflects local file changes
 
@@ -33,8 +37,8 @@ Split your Windows Terminal (Ctrl+Shift+D) — one side for your terminal, the o
 
 ### Windows (Installer)
 1. Download from [Releases](../../releases)
-2. Right-click `install.bat` → **Run as administrator**
-3. Run `treeru` in a new terminal
+2. Extract ZIP → run `install.bat` (auto-requests admin)
+3. Run `treeru` in a new terminal, or click the desktop icon
 
 ### Manual
 ```bash
@@ -59,14 +63,29 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 |---|---|
 | `↑` `↓` | Navigate files |
 | `←` `→` | Move between columns |
-| `Enter` | Enter directory |
+| `Enter` | Enter directory / View file |
+| `Space` | Toggle select file |
+| `Shift+↑↓` | Range select |
 | `Backspace` | Go to parent directory |
-| `Alt+Shift+C` | Copy path to clipboard |
+| `Alt+Shift+C` | Copy path(s) to clipboard |
 | `F2` | Rename |
+| `F4` | Edit in Notepad |
+| `F5` | Paste files from clipboard |
 | `F7` | Create new folder |
 | `Del` | Delete |
 | `F10` | SSH connect / disconnect |
-| `Esc` | Quit (disconnect if SSH) |
+| `Esc` | Clear selection / Disconnect SSH |
+
+**In file viewer:**
+
+| Key | Action |
+|---|---|
+| `↑` `↓` | Scroll |
+| `PgUp` `PgDn` | Page scroll |
+| `Home` `End` | Top / Bottom |
+| `C` | Copy entire file to clipboard |
+| `F4` | Open in Notepad |
+| `Esc` `Q` | Close viewer |
 
 ## SSH
 
