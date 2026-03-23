@@ -772,8 +772,15 @@ function openViewer(fp, name) {
 
   dialogOpen = true;
 
+  const hint = blessed.box({
+    parent: screen, bottom: 0, left: 0, width: '100%', height: 1,
+    tags: true,
+    style: { bg: C.header, fg: '#87AFD7' },
+    content: ' {white-fg}{bold}ESC{/}{#87AFD7-fg} Close{/}  {white-fg}{bold}↑↓{/}{#87AFD7-fg} Scroll{/}  {white-fg}{bold}PgUp/PgDn{/}{#87AFD7-fg} Page{/}  {white-fg}{bold}Home/End{/}{#87AFD7-fg} Top/Bottom{/}',
+  });
+
   const viewer = blessed.box({
-    parent: screen, top: 0, left: 0, width: '100%', height: '100%',
+    parent: screen, top: 0, left: 0, width: '100%', height: '100%-1',
     border: { type: 'line' }, tags: true,
     scrollable: true, alwaysScroll: true, mouse: true, keys: true,
     scrollbar: { ch: '█', style: { fg: 'gray' } },
@@ -790,15 +797,9 @@ function openViewer(fp, name) {
   });
   viewer.setContent(plainLines.join('\n'));
 
-  const hint = blessed.box({
-    parent: viewer, bottom: 0, left: 0, width: '100%', height: 1,
-    tags: true,
-    style: { bg: C.header, fg: '#87AFD7' },
-    content: ' {white-fg}{bold}ESC{/}{#87AFD7-fg} Close{/}  {white-fg}{bold}↑↓{/}{#87AFD7-fg} Scroll{/}  {white-fg}{bold}PgUp/PgDn{/}{#87AFD7-fg} Page{/}  {white-fg}{bold}Home/End{/}{#87AFD7-fg} Top/Bottom{/}',
-  });
-
   const closeViewer = () => {
     screen.removeListener('keypress', viewerKeys);
+    hint.destroy();
     viewer.destroy();
     dialogOpen = false;
     render();
