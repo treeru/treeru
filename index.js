@@ -480,6 +480,7 @@ function renderFnBar() {
     '{white-fg}{bold}Enter{/}{#87AFD7-fg} Open/View{/}',
     '{white-fg}{bold}Space{/}{#87AFD7-fg} Select{/}',
     '{white-fg}{bold}F2{/}{#87AFD7-fg} Rename{/}',
+    '{white-fg}{bold}F4{/}{#87AFD7-fg} Edit{/}',
     '{white-fg}{bold}F5{/}{#87AFD7-fg} Paste{/}',
     '{white-fg}{bold}F7{/}{#87AFD7-fg} NewDir{/}',
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
@@ -1209,6 +1210,15 @@ screen.on('keypress', (ch, key) => {
     case 'f2':
       renameEntry();
       break;
+    case 'f4': {
+      const entry = panel.entries[panel.selectedIndex];
+      if (entry && entry.name !== '..' && entry.type !== 'dir') {
+        const fp = remoteMode ? null : path.join(panel.cwd, entry.name);
+        if (!fp) { showMessage('Cannot edit remote files'); break; }
+        execFile('notepad.exe', [fp]);
+      }
+      break;
+    }
     case 'f5':
       pasteFilesFromClipboard();
       break;
