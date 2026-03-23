@@ -540,7 +540,16 @@ function inputDialog(title, defaultVal, callback) {
   });
   input.on('submit', (v) => { form.destroy(); screen.render(); setTimeout(() => { dialogOpen = false; if (v) callback(v); }, 50); });
   input.on('cancel', () => { form.destroy(); render(); setTimeout(() => { dialogOpen = false; }, 50); });
-  input.focus(); screen.render();
+  input.focus();
+  screen.render();
+  // Move cursor to end of input text
+  setTimeout(() => {
+    const val = defaultVal || '';
+    const absX = input.aleft + blessed.unicode.strWidth(val);
+    const absY = input.atop;
+    screen.program.move(absX, absY);
+    screen.program.showCursor();
+  }, 10);
 }
 
 function confirmDialog(msg, callback) {
