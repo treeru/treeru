@@ -50,7 +50,10 @@ Split your terminal (`Ctrl+Shift+D`). Left: Claude Code. Right: TreeRU.
 3. Switch to Claude Code → paste → "edit this file"
 
 **Selecting multiple files:**
-1. `Space` or `Ctrl+Click` to select files
+- Files next to each other: `Shift+↑↓` to range select (highlighted in yellow)
+- Files scattered in the folder: `Space` to toggle each one individually (highlighted in yellow)
+- With mouse: `Ctrl+Click` to toggle, or drag to range select
+1. Select the files you need
 2. `Alt+Shift+C` copies all paths (comma-separated)
 3. Paste into Claude Code → "review these files"
 
