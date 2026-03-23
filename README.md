@@ -99,7 +99,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `Space` | Toggle select file |
 | `Shift+↑↓` | Range select |
 | `Backspace` | Go to parent directory |
-| `Alt+Shift+C` | Copy path(s) to clipboard |
+| `F6` / `Alt+Shift+C` | Copy path(s) to clipboard |
 | `F2` | Rename |
 | `F4` | Edit in Notepad |
 | `F5` | Paste files from clipboard |
