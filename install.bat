@@ -41,7 +41,7 @@ echo [2/5] Installing Node.js...
 where winget >nul 2>&1
 if %errorlevel% equ 0 (
     echo       Installing via winget...
-    winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -h
+    winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -h --source winget 2>nul
     if %errorlevel% equ 0 (
         echo       Node.js installed
         echo.
