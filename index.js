@@ -544,11 +544,11 @@ function inputDialog(title, defaultVal, callback) {
 function confirmDialog(msg, callback) {
   dialogOpen = true;
   const box = blessed.box({
-    parent: screen, top: 'center', left: 'center', width: '50%', height: 5,
+    parent: screen, top: 'center', left: 'center', width: '50%', height: 6,
     border: { type: 'line' }, tags: true,
     style: { border: { fg: 'red' }, bg: C.header, fg: C.fg },
     label: ' Confirm ',
-    content: `\n ${msg}\n\n {green-fg}Y{/} = Yes   {red-fg}N/Esc{/} = No`,
+    content: `\n ${msg}\n\n {green-fg}Enter/Y{/} = Confirm   {red-fg}Esc/N{/} = Cancel`,
   });
   const h = (ch, key) => {
     if (!key) return;
