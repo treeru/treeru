@@ -776,7 +776,7 @@ function openViewer(fp, name) {
     parent: screen, bottom: 0, left: 0, width: '100%', height: 1,
     tags: true,
     style: { bg: C.header, fg: '#87AFD7' },
-    content: ' {white-fg}{bold}ESC{/}{#87AFD7-fg} Close{/}  {white-fg}{bold}↑↓{/}{#87AFD7-fg} Scroll{/}  {white-fg}{bold}PgUp/PgDn{/}{#87AFD7-fg} Page{/}  {white-fg}{bold}Home/End{/}{#87AFD7-fg} Top/Bottom{/}',
+    content: ' {white-fg}{bold}ESC{/}{#87AFD7-fg} Close{/}  {white-fg}{bold}↑↓{/}{#87AFD7-fg} Scroll{/}  {white-fg}{bold}PgUp/PgDn{/}{#87AFD7-fg} Page{/}  {white-fg}{bold}Home/End{/}{#87AFD7-fg} Top/Bottom{/}  {white-fg}{bold}C{/}{#87AFD7-fg} CopyAll{/}',
   });
 
   const viewer = blessed.box({
@@ -821,6 +821,11 @@ function openViewer(fp, name) {
       viewer.scrollTo(0); screen.render();
     } else if (key.name === 'end') {
       viewer.scrollTo(lines.length); screen.render();
+    } else if (ch === 'c' || ch === 'C') {
+      const text = content.replace(/\r\n/g, '\n');
+      execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`], (err) => {
+        showMessage(err ? 'Copy failed' : 'Copied to clipboard');
+      });
     }
   };
 
