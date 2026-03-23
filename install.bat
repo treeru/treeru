@@ -42,7 +42,7 @@ echo [2/5] Installing Node.js...
 where winget >nul 2>&1
 if %errorlevel% equ 0 (
     echo       Installing via winget...
-    winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -h --source winget 2>nul
+    winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -h --source winget --disable-interactivity
     set "PATH=%ProgramFiles%\nodejs;%PATH%"
     where node >nul 2>&1
     if !errorlevel! equ 0 (
