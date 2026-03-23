@@ -1215,7 +1215,7 @@ screen.on('keypress', (ch, key) => {
       if (entry && entry.name !== '..' && entry.type !== 'dir') {
         const fp = remoteMode ? null : path.join(panel.cwd, entry.name);
         if (!fp) { showMessage('Cannot edit remote files'); break; }
-        execFile('notepad.exe', [fp]);
+        require('child_process').spawn('notepad.exe', [fp], { detached: true, stdio: 'ignore' }).unref();
       }
       break;
     }
