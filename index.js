@@ -510,11 +510,13 @@ function render() {
   screen.render();
 
   // Position cursor at end of path prompt (must be after screen.render)
-  const prompt = pathBar.getContent();
-  const absX = pathBar.aleft + blessed.unicode.strWidth(prompt);
-  const absY = pathBar.atop;
-  screen.program.move(absX, absY);
-  screen.program.showCursor();
+  if (!dialogOpen) {
+    const prompt = pathBar.getContent();
+    const absX = pathBar.aleft + blessed.unicode.strWidth(prompt);
+    const absY = pathBar.atop;
+    screen.program.move(absX, absY);
+    screen.program.showCursor();
+  }
 }
 
 // ── Dialogs ─────────────────────────────────────────────
