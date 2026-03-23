@@ -33,6 +33,29 @@ Split your Windows Terminal (Ctrl+Shift+D) — one side for your terminal, the o
 - **CJK filename support** — Correctly displays CJK (Korean, Japanese, Chinese) filenames
 - **Auto-refresh** — Automatically reflects local file changes
 
+## Workflow — Using with Claude Code
+
+Split your terminal (`Ctrl+Shift+D`). Left: Claude Code. Right: TreeRU.
+
+**Passing a screenshot to Claude Code:**
+1. Take a screenshot (`PrtSc`, `Win+Shift+S`, Snipaste, etc.)
+2. TreeRU auto-saves it to the current folder as `screenshot_....png`
+3. Navigate to the file → `Alt+Shift+C` to copy the path
+4. Switch to Claude Code → `Ctrl+V` to paste the path
+5. Claude Code can now read and analyze the image
+
+**Asking Claude Code to edit a file:**
+1. Browse to the file in TreeRU
+2. `Alt+Shift+C` to copy the full path
+3. Switch to Claude Code → paste → "edit this file"
+
+**Selecting multiple files:**
+1. `Space` or `Ctrl+Click` to select files
+2. `Alt+Shift+C` copies all paths (comma-separated)
+3. Paste into Claude Code → "review these files"
+
+No IDE needed. No drag-and-drop. Just copy the path and paste.
+
 ## Install
 
 ### Windows (Installer)
