@@ -51,7 +51,8 @@ node index.js
 ```
 
 ### 필수 요구사항
-- [Node.js](https://nodejs.org) v18 이상
+- [Node.js](https://nodejs.org) v20.18.1 LTS 권장 (v18 이상 지원)
+- Windows 11 (25H2에서 테스트) / Windows 10
 
 ## Usage
 

@@ -51,7 +51,8 @@ node index.js
 ```
 
 ### Requires
-- [Node.js](https://nodejs.org) v18 or higher
+- [Node.js](https://nodejs.org) v20.18.1 LTS recommended (v18+ supported)
+- Windows 11 (tested on 25H2) / Windows 10
 
 ## Usage
 
