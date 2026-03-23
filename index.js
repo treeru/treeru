@@ -536,8 +536,8 @@ function inputDialog(title, defaultVal, callback) {
     style: { bg: C.header, fg: 'gray' },
     content: '{gray-fg}Enter: confirm  |  Escape: cancel{/}',
   });
-  input.on('submit', (v) => { form.destroy(); dialogOpen = false; screen.render(); if (v) callback(v); });
-  input.on('cancel', () => { form.destroy(); dialogOpen = false; render(); });
+  input.on('submit', (v) => { form.destroy(); screen.render(); setTimeout(() => { dialogOpen = false; if (v) callback(v); }, 50); });
+  input.on('cancel', () => { form.destroy(); render(); setTimeout(() => { dialogOpen = false; }, 50); });
   input.focus(); screen.render();
 }
 
@@ -553,9 +553,9 @@ function confirmDialog(msg, callback) {
   const h = (ch, key) => {
     if (!key) return;
     if (key.name === 'y' || key.name === 'enter' || key.name === 'return') {
-      screen.removeListener('keypress', h); box.destroy(); dialogOpen = false; render(); callback();
+      screen.removeListener('keypress', h); box.destroy(); render(); setTimeout(() => { dialogOpen = false; callback(); }, 50);
     } else if (key.name === 'n' || key.name === 'escape') {
-      screen.removeListener('keypress', h); box.destroy(); dialogOpen = false; render();
+      screen.removeListener('keypress', h); box.destroy(); render(); setTimeout(() => { dialogOpen = false; }, 50);
     }
   };
   screen.on('keypress', h); screen.render();
