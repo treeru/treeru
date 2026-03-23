@@ -38,27 +38,32 @@ echo       Node.js not found.
 echo.
 echo [2/5] Installing Node.js...
 
+:: Try winget first
 where winget >nul 2>&1
 if %errorlevel% equ 0 (
     echo       Installing via winget...
     winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -h --source winget 2>nul
-    if %errorlevel% equ 0 (
+    set "PATH=%ProgramFiles%\nodejs;%PATH%"
+    where node >nul 2>&1
+    if !errorlevel! equ 0 (
         echo       Node.js installed
         echo.
-        set "PATH=%ProgramFiles%\nodejs;%PATH%"
         goto :install_treeru
     )
+    echo       winget failed, trying direct download...
 )
 
+:: Fallback: direct download
 echo       Downloading directly...
 set "NODE_MSI=%TEMP%\node-install.msi"
 set "NODE_URL=https://nodejs.org/dist/v20.11.1/node-v20.11.1-x64.msi"
 
-powershell -Command "Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%NODE_MSI%'" 2>nul
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%NODE_MSI%'" 2>nul
 if not exist "%NODE_MSI%" (
     echo.
     echo [X] Download failed!
     echo     Install manually: https://nodejs.org
+    echo     Node.js 설치에 실패했습니다. 직접 설치해주세요.
     echo.
     pause
     endlocal
@@ -67,15 +72,21 @@ if not exist "%NODE_MSI%" (
 
 echo       Installing...
 msiexec /i "%NODE_MSI%" /qn /norestart
-if %errorlevel% neq 0 (
-    echo [X] Install failed!
+del "%NODE_MSI%" >nul 2>&1
+set "PATH=%ProgramFiles%\nodejs;%PATH%"
+
+:: Verify node is actually working
+where node >nul 2>&1
+if !errorlevel! neq 0 (
+    echo.
+    echo [X] Node.js installation failed!
     echo     Install manually: https://nodejs.org
+    echo     Node.js 설치에 실패했습니다. 직접 설치해주세요.
+    echo.
     pause
     endlocal
     exit
 )
-del "%NODE_MSI%" >nul 2>&1
-set "PATH=%ProgramFiles%\nodejs;%PATH%"
 echo       Node.js installed
 echo.
 
@@ -126,6 +137,16 @@ echo [5/5] Creating shortcuts...
 
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Desktop shortcut created'"
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%SCRIPT_DIR%TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Local shortcut created'"
+
+:: ── Verify installation ──
+node "%INSTALL_DIR%\index.js" --version >nul 2>&1
+if !errorlevel! neq 0 (
+    echo.
+    echo [!] Warning: Installation may have issues.
+    echo     설치에 문제가 있을 수 있습니다.
+    echo     Try running: node "%INSTALL_DIR%\index.js"
+    echo.
+)
 
 echo.
 echo   ===============================================
