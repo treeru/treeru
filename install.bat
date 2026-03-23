@@ -36,12 +36,31 @@ if %errorlevel% equ 0 (
 
 echo       Node.js not found.
 echo.
-echo [2/5] Installing Node.js...
+echo [2/5] Installing Node.js v20 LTS...
 
-:: Try winget first
+:: ── Method 1: Direct MSI download (most reliable) ──
+echo       Downloading Node.js...
+set "NODE_MSI=%TEMP%\node-install.msi"
+set "NODE_URL=https://nodejs.org/dist/v20.18.1/node-v20.18.1-x64.msi"
+
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%NODE_MSI%'" 2>nul
+if exist "%NODE_MSI%" (
+    echo       Installing...
+    msiexec /i "%NODE_MSI%" /qn /norestart
+    del "%NODE_MSI%" >nul 2>&1
+    set "PATH=%ProgramFiles%\nodejs;%PATH%"
+    where node >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo       Node.js installed
+        echo.
+        goto :install_treeru
+    )
+)
+
+:: ── Method 2: winget fallback ──
+echo       Direct download failed, trying winget...
 where winget >nul 2>&1
 if %errorlevel% equ 0 (
-    echo       Installing via winget...
     winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -h --source winget --disable-interactivity
     set "PATH=%ProgramFiles%\nodejs;%PATH%"
     where node >nul 2>&1
@@ -50,45 +69,19 @@ if %errorlevel% equ 0 (
         echo.
         goto :install_treeru
     )
-    echo       winget failed, trying direct download...
 )
 
-:: Fallback: direct download
-echo       Downloading directly...
-set "NODE_MSI=%TEMP%\node-install.msi"
-set "NODE_URL=https://nodejs.org/dist/v20.11.1/node-v20.11.1-x64.msi"
-
-powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%NODE_MSI%'" 2>nul
-if not exist "%NODE_MSI%" (
-    echo.
-    echo [X] Download failed!
-    echo     Install manually: https://nodejs.org
-    echo     Node.js 설치에 실패했습니다. 직접 설치해주세요.
-    echo.
-    pause
-    endlocal
-    exit
-)
-
-echo       Installing...
-msiexec /i "%NODE_MSI%" /qn /norestart
-del "%NODE_MSI%" >nul 2>&1
-set "PATH=%ProgramFiles%\nodejs;%PATH%"
-
-:: Verify node is actually working
-where node >nul 2>&1
-if !errorlevel! neq 0 (
-    echo.
-    echo [X] Node.js installation failed!
-    echo     Install manually: https://nodejs.org
-    echo     Node.js 설치에 실패했습니다. 직접 설치해주세요.
-    echo.
-    pause
-    endlocal
-    exit
-)
-echo       Node.js installed
+:: ── Both methods failed ──
 echo.
+echo [X] Node.js installation failed!
+echo     Install manually: https://nodejs.org
+echo.
+echo [X] Node.js 설치에 실패했습니다.
+echo     https://nodejs.org 에서 직접 설치 후 다시 실행해주세요.
+echo.
+pause
+endlocal
+exit
 
 :install_treeru
 echo [3/5] Installing TreeRU...

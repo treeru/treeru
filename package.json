@@ -19,6 +19,9 @@
   ],
   "author": "TreeRU <info@treeru.com> (Seoul, South Korea)",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "type": "commonjs",
   "dependencies": {
     "blessed": "^0.1.81",
