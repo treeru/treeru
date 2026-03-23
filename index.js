@@ -485,7 +485,7 @@ function renderFnBar() {
     '{white-fg}{bold}F7{/}{#87AFD7-fg} NewDir{/}',
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
     '{white-fg}{bold}Del{/}{#87AFD7-fg} Delete{/}',
-    '{white-fg}{bold}Ctrl+Shift+C{/}{#87AFD7-fg} CopyPath{/}',
+    '{white-fg}{bold}Alt+Shift+C{/}{#87AFD7-fg} CopyPath{/}',
     '{white-fg}{bold}PrtSc{/}{#87AFD7-fg} AutoSave{/}',
   ];
   fnBar.setContent(` ${items.join('  ')}`);
