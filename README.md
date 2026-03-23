@@ -40,6 +40,8 @@ Split your Windows Terminal (Ctrl+Shift+D) — one side for your terminal, the o
 2. Extract ZIP → run `install.bat` (auto-requests admin)
 3. Run `treeru` in a new terminal, or click the desktop icon
 
+> The installer will attempt to install Node.js automatically. If it fails, install Node.js manually from [nodejs.org](https://nodejs.org) and run `install.bat` again.
+
 ### Manual
 ```bash
 git clone https://github.com/treeru/treeru.git
@@ -47,6 +49,9 @@ cd treeru
 npm install
 node index.js
 ```
+
+### Requires
+- [Node.js](https://nodejs.org) v18 or higher
 
 ## Usage
 

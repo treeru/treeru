@@ -71,17 +71,14 @@ if %errorlevel% equ 0 (
     )
 )
 
-:: ── Both methods failed ──
+:: ── Both methods failed — continue anyway ──
 echo.
-echo [X] Node.js installation failed!
-echo     Install manually: https://nodejs.org
+echo [!] Node.js auto-install failed. Continuing without Node.js...
+echo     You can install it manually later: https://nodejs.org
 echo.
-echo [X] Node.js 설치에 실패했습니다.
-echo     https://nodejs.org 에서 직접 설치 후 다시 실행해주세요.
+echo [!] Node.js 자동 설치에 실패했습니다. 설치를 계속합니다.
+echo     나중에 https://nodejs.org 에서 Node.js를 직접 설치해주세요.
 echo.
-pause
-endlocal
-exit
 
 :install_treeru
 echo [3/5] Installing TreeRU...
@@ -132,19 +129,24 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc =
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%SCRIPT_DIR%TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Local shortcut created'"
 
 :: ── Verify installation ──
-node "%INSTALL_DIR%\index.js" --version >nul 2>&1
+where node >nul 2>&1
 if !errorlevel! neq 0 (
     echo.
-    echo [!] Warning: Installation may have issues.
-    echo     설치에 문제가 있을 수 있습니다.
-    echo     Try running: node "%INSTALL_DIR%\index.js"
+    echo   ===============================================
+    echo   Files installed, but Node.js is missing.
+    echo   Install Node.js from https://nodejs.org
+    echo   Then open a new terminal and run: treeru
     echo.
+    echo   파일은 설치되었으나 Node.js가 없습니다.
+    echo   https://nodejs.org 에서 Node.js 설치 후
+    echo   새 터미널에서 treeru 를 입력하세요.
+    echo   ===============================================
+) else (
+    echo.
+    echo   ===============================================
+    echo   Installation complete!
+    echo   설치가 완료되었습니다!
 )
-
-echo.
-echo   ===============================================
-echo   Installation complete!
-echo   설치가 완료되었습니다!
 echo.
 echo   Open a new terminal and run: treeru
 echo   새 터미널을 열고 treeru 를 입력하세요.
