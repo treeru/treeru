@@ -358,15 +358,15 @@ const headerBar = blessed.box({
 
 // Main file panel (full width)
 const fileBox = blessed.box({
-  parent: screen, top: 1, left: 0, width: '100%', height: '100%-4',
+  parent: screen, top: 1, left: 0, width: '100%', height: '100%-5',
   border: { type: 'line' }, label: ' TreeRU ', tags: true,
   scrollable: true, mouse: true, clickable: true,
   style: { border: { fg: C.border }, label: { fg: C.borderHi, bold: true } },
 });
 
-// Function key bar (bottom)
+// Function key bar (bottom, 2 lines)
 const fnBar = blessed.box({
-  parent: screen, bottom: 2, left: 0, width: '100%', height: 1,
+  parent: screen, bottom: 2, left: 0, width: '100%', height: 2,
   tags: true, style: { bg: C.header, fg: 'gray' },
 });
 
@@ -603,21 +603,23 @@ function renderStatus() {
 }
 
 function renderFnBar() {
-  const items = [
+  const row1 = [
     '{white-fg}{bold}Enter{/}{#87AFD7-fg} Open/View{/}',
     '{white-fg}{bold}Space{/}{#87AFD7-fg} Select{/}',
     '{white-fg}{bold}F2{/}{#87AFD7-fg} Rename{/}',
     '{white-fg}{bold}F4{/}{#87AFD7-fg} Edit{/}',
     '{white-fg}{bold}F5{/}{#87AFD7-fg} Paste{/}',
     '{white-fg}{bold}F7{/}{#87AFD7-fg} NewDir{/}',
+    '{white-fg}{bold}Del{/}{#87AFD7-fg} Delete{/}',
+  ];
+  const row2 = [
     '{white-fg}{bold}F9{/}{#E5C07B-fg} Claude+{/}',
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
     '{white-fg}{bold}F12{/}{#E5C07B-fg} Claude{/}',
-    '{white-fg}{bold}Del{/}{#87AFD7-fg} Delete{/}',
     '{white-fg}{bold}F6{/}{#87AFD7-fg}/{/}{white-fg}{bold}Alt+Shift+C{/}{#87AFD7-fg} CopyPath{/}',
     '{white-fg}{bold}PrtSc{/}{#87AFD7-fg} AutoSave{/}',
   ];
-  fnBar.setContent(` ${items.join('  ')}`);
+  fnBar.setContent(` ${row1.join('  ')}\n ${row2.join('  ')}`);
 }
 
 function renderPathBar() {
