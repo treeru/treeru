@@ -1,3 +1,5 @@
+// Force SGR mouse mode for Windows Terminal compatibility
+process.env.BLESSED_FORCE_MODES = 'SGRMOUSE=1,CELLMOTION=1,ALLMOTION=1';
 const blessed = require('blessed');
 const fs = require('fs');
 const path = require('path');
@@ -40,6 +42,7 @@ const panel = {
   entries: [],
   selectedIndex: 0,
   scrollOffset: 0,
+  marked: new Set(), // multi-select: stores entry names
 };
 let dialogOpen = false;
 
@@ -345,7 +348,7 @@ function truncW(s, tw) {
 }
 
 // ── Screen ──────────────────────────────────────────────
-const screen = blessed.screen({ smartCSR: true, title: 'TreeRU', fullUnicode: true });
+const screen = blessed.screen({ smartCSR: true, title: 'TreeRU', fullUnicode: true, mouse: true });
 
 // Header
 const headerBar = blessed.box({
@@ -357,7 +360,7 @@ const headerBar = blessed.box({
 const fileBox = blessed.box({
   parent: screen, top: 1, left: 0, width: '100%', height: '100%-5',
   border: { type: 'line' }, label: ' TreeRU ', tags: true,
-  scrollable: true, mouse: true,
+  scrollable: true, mouse: true, clickable: true,
   style: { border: { fg: C.border }, label: { fg: C.borderHi, bold: true } },
 });
 
@@ -470,6 +473,7 @@ function getFileIcon(name) {
 
 function formatCell(entry, selected, colWidth) {
   const maxW = Math.max(1, colWidth - 4);
+  const marked = panel.marked.has(entry.name);
   let icon, color;
   if (entry.type === 'dir') { icon = '>'; color = '{cyan-fg}{bold}'; }
   else if (entry.type === 'symlink') { icon = '~'; color = '{magenta-fg}'; }
@@ -483,9 +487,15 @@ function formatCell(entry, selected, colWidth) {
   const cellW = 3 + strWidth(display);
   const padLen = Math.max(0, colWidth - cellW);
 
+  if (selected && marked) {
+    return `{black-fg}{yellow-bg}${cellContent}${' '.repeat(padLen)}{/}`;
+  }
   if (selected) {
     const bg = remoteMode ? '{#56B6C2-bg}' : '{green-bg}';
     return `{black-fg}${bg}${cellContent}${' '.repeat(padLen)}{/}`;
+  }
+  if (marked) {
+    return `{yellow-fg}{bold}${cellContent}${' '.repeat(padLen)}{/}`;
   }
   return `${color}${cellContent}${' '.repeat(padLen)}{/}`;
 }
@@ -558,6 +568,9 @@ function renderPanel() {
     lines.push(line);
   }
   fileBox.setContent(lines.join('\n'));
+
+  // Store grid info for mouse click calculation
+  panel._grid = { ih, numCols, colWidth, pageStart };
 }
 
 function renderHeader() {
@@ -583,7 +596,8 @@ function renderStatus() {
       left = ` ${getFileInfo(entry.name, path.join(panel.cwd, entry.name))}`;
     }
   }
-  const idx = panel.entries.length > 0 ? `${panel.selectedIndex + 1}/${panel.entries.length}` : '0/0';
+  const markedInfo = panel.marked.size > 0 ? `[${panel.marked.size} selected] ` : '';
+  const idx = panel.entries.length > 0 ? `${markedInfo}${panel.selectedIndex + 1}/${panel.entries.length}` : '0/0';
   const pad = Math.max(0, screen.width - left.length - idx.length - 1);
   statusBar.setContent(`${left}${' '.repeat(pad)}${idx} `);
 }
@@ -603,7 +617,7 @@ function renderFnBar() {
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
     '{white-fg}{bold}F12{/}{#E5C07B-fg} Claude{/}',
     '{white-fg}{bold}F6{/}{#87AFD7-fg}/{/}{white-fg}{bold}Alt+Shift+C{/}{#87AFD7-fg} CopyPath{/}',
-    '{white-fg}{bold}PrtSc{/}{#87AFD7-fg} AutoSave{/}',
+    '{white-fg}{bold}PrtSc{/}{#87AFD7-fg}/{/}{white-fg}{bold}Win+Shift+S{/}{#87AFD7-fg} Screenshot{/}',
   ];
   fnBar.setContent(` ${row1.join('  ')}\n ${row2.join('  ')}`);
 }
@@ -627,11 +641,13 @@ function render() {
   screen.render();
 
   // Position cursor at end of path prompt (must be after screen.render)
-  const prompt = pathBar.getContent();
-  const absX = pathBar.aleft + blessed.unicode.strWidth(prompt);
-  const absY = pathBar.atop;
-  screen.program.move(absX, absY);
-  screen.program.showCursor();
+  if (!dialogOpen) {
+    const prompt = pathBar.getContent();
+    const absX = pathBar.aleft + blessed.unicode.strWidth(prompt);
+    const absY = pathBar.atop;
+    screen.program.move(absX, absY);
+    screen.program.showCursor();
+  }
 }
 
 // ── Dialogs ─────────────────────────────────────────────
@@ -653,26 +669,35 @@ function inputDialog(title, defaultVal, callback) {
     style: { bg: C.header, fg: 'gray' },
     content: '{gray-fg}Enter: confirm  |  Escape: cancel{/}',
   });
-  input.on('submit', (v) => { form.destroy(); dialogOpen = false; screen.render(); if (v) callback(v); });
-  input.on('cancel', () => { form.destroy(); dialogOpen = false; render(); });
-  input.focus(); screen.render();
+  input.on('submit', (v) => { form.destroy(); screen.render(); setTimeout(() => { dialogOpen = false; if (v) callback(v); }, 50); });
+  input.on('cancel', () => { form.destroy(); render(); setTimeout(() => { dialogOpen = false; }, 50); });
+  input.focus();
+  screen.render();
+  // Move cursor to end of input text
+  setTimeout(() => {
+    const val = defaultVal || '';
+    const absX = input.aleft + blessed.unicode.strWidth(val);
+    const absY = input.atop;
+    screen.program.move(absX, absY);
+    screen.program.showCursor();
+  }, 10);
 }
 
 function confirmDialog(msg, callback) {
   dialogOpen = true;
   const box = blessed.box({
-    parent: screen, top: 'center', left: 'center', width: '50%', height: 5,
+    parent: screen, top: 'center', left: 'center', width: '50%', height: 6,
     border: { type: 'line' }, tags: true,
     style: { border: { fg: 'red' }, bg: C.header, fg: C.fg },
     label: ' Confirm ',
-    content: `\n ${msg}\n\n {green-fg}Y{/} = Yes   {red-fg}N/Esc{/} = No`,
+    content: `\n ${msg}\n\n {green-fg}Enter/Y{/} = Confirm   {red-fg}Esc/N{/} = Cancel`,
   });
   const h = (ch, key) => {
     if (!key) return;
     if (key.name === 'y' || key.name === 'enter' || key.name === 'return') {
-      screen.removeListener('keypress', h); box.destroy(); dialogOpen = false; render(); callback();
+      screen.removeListener('keypress', h); box.destroy(); render(); setTimeout(() => { dialogOpen = false; callback(); }, 50);
     } else if (key.name === 'n' || key.name === 'escape') {
-      screen.removeListener('keypress', h); box.destroy(); dialogOpen = false; render();
+      screen.removeListener('keypress', h); box.destroy(); render(); setTimeout(() => { dialogOpen = false; }, 50);
     }
   };
   screen.on('keypress', h); screen.render();
@@ -773,6 +798,7 @@ function refreshRemote(callback) {
     panel.cwd = `${remoteUser}@${remoteHost}:${remoteCwd}`;
     panel.selectedIndex = 0;
     panel.scrollOffset = 0;
+    panel.marked.clear();
     render();
     if (callback) callback(null);
   });
@@ -816,6 +842,7 @@ function navigate(dir) {
     panel.cwd = path.resolve(dir);
     panel.selectedIndex = 0;
     panel.scrollOffset = 0;
+    panel.marked.clear();
     render();
   } catch {
     showMessage('Access denied: ' + dir);
@@ -842,22 +869,143 @@ function openEntry() {
   if (entry.name === '..') { navigate(path.dirname(panel.cwd)); return; }
   const fp = path.join(panel.cwd, entry.name);
   if (entry.type === 'dir') navigate(fp);
+  else if (isViewable(entry.name)) openViewer(fp, entry.name);
+}
+
+// ── File Viewer ──────────────────────────────────────────
+const VIEWABLE_EXT = new Set([
+  '.txt', '.md', '.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.go', '.rs',
+  '.java', '.c', '.h', '.cpp', '.hpp', '.cs', '.php', '.swift', '.kt',
+  '.json', '.yaml', '.yml', '.toml', '.xml', '.html', '.htm', '.css', '.scss',
+  '.sh', '.bash', '.zsh', '.bat', '.ps1', '.cmd',
+  '.conf', '.cfg', '.ini', '.env', '.gitignore', '.dockerignore',
+  '.csv', '.log', '.sql', '.graphql',
+  '.vue', '.svelte', '.astro',
+  '.makefile', '.dockerfile', '.editorconfig',
+  '.lock', '.pid', '.map',
+]);
+
+function isViewable(name) {
+  const ext = path.extname(name).toLowerCase();
+  const base = name.toLowerCase();
+  // Known extensionless files
+  if (['makefile', 'dockerfile', 'readme', 'license', 'changelog'].includes(base)) return true;
+  return VIEWABLE_EXT.has(ext);
+}
+
+function openViewer(fp, name) {
+  let content;
+  try {
+    const buf = fs.readFileSync(fp);
+    // Skip binary files (check for null bytes in first 8KB)
+    const sample = buf.slice(0, 8192);
+    if (sample.includes(0)) { showMessage('Binary file — cannot view'); return; }
+    content = buf.toString('utf8');
+  } catch (e) {
+    showMessage('Cannot read: ' + e.message);
+    return;
+  }
+
+  const lines = content.split('\n');
+  const lineNumW = String(lines.length).length;
+  const numbered = lines.map((l, i) => {
+    const num = String(i + 1).padStart(lineNumW);
+    return `{gray-fg}${num}{/} ${l.replace(/\{/g, '{open}').replace(/\{open\}/g, '{')}`;
+  });
+
+  dialogOpen = true;
+
+  const hint = blessed.box({
+    parent: screen, bottom: 0, left: 0, width: '100%', height: 1,
+    tags: true,
+    style: { bg: C.header, fg: '#87AFD7' },
+    content: ' {white-fg}{bold}ESC{/}{#87AFD7-fg} Close{/}  {white-fg}{bold}↑↓{/}{#87AFD7-fg} Scroll{/}  {white-fg}{bold}PgUp/PgDn{/}{#87AFD7-fg} Page{/}  {white-fg}{bold}Home/End{/}{#87AFD7-fg} Top/Bottom{/}  {white-fg}{bold}C{/}{#87AFD7-fg} CopyAll{/}  {white-fg}{bold}F4{/}{#87AFD7-fg} Edit{/}',
+  });
+
+  const viewer = blessed.box({
+    parent: screen, top: 0, left: 0, width: '100%', height: '100%-1',
+    border: { type: 'line' }, tags: true,
+    scrollable: true, alwaysScroll: true, mouse: true, keys: true,
+    scrollbar: { ch: '█', style: { fg: 'gray' } },
+    style: { border: { fg: C.borderHi }, bg: 'black', fg: 'white' },
+    label: ` ${name} (${lines.length} lines) `,
+  });
+
+  // Plain text content with line numbers
+  const plainLines = lines.map((l, i) => {
+    const num = String(i + 1).padStart(lineNumW);
+    // Escape blessed tags in file content
+    const safe = l.replace(/\{/g, '\\{');
+    return `{gray-fg}${num}{/}{white-fg} ${safe}{/}`;
+  });
+  viewer.setContent(plainLines.join('\n'));
+
+  const closeViewer = () => {
+    screen.removeListener('keypress', viewerKeys);
+    hint.destroy();
+    viewer.destroy();
+    dialogOpen = false;
+    render();
+  };
+
+  const viewerKeys = (ch, key) => {
+    if (!key) return;
+    if (key.name === 'escape' || key.name === 'q' || key.name === 'backspace') {
+      closeViewer();
+    } else if (key.name === 'up' || key.name === 'k') {
+      viewer.scroll(-1); screen.render();
+    } else if (key.name === 'down' || key.name === 'j') {
+      viewer.scroll(1); screen.render();
+    } else if (key.name === 'pageup') {
+      viewer.scroll(-(viewer.height - 3)); screen.render();
+    } else if (key.name === 'pagedown') {
+      viewer.scroll(viewer.height - 3); screen.render();
+    } else if (key.name === 'home') {
+      viewer.scrollTo(0); screen.render();
+    } else if (key.name === 'end') {
+      viewer.scrollTo(lines.length); screen.render();
+    } else if (key.name === 'f4') {
+      closeViewer();
+      require('child_process').spawn('notepad.exe', [fp], { detached: true, stdio: 'ignore' }).unref();
+    } else if (ch === 'c' || ch === 'C' || ch === 'ㅊ') {
+      const text = content.replace(/\r\n/g, '\n');
+      execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`], (err) => {
+        showMessage(err ? 'Copy failed' : 'Copied to clipboard');
+      });
+    }
+  };
+
+  screen.on('keypress', viewerKeys);
+  viewer.focus();
+  screen.render();
 }
 
 function copyPathToClipboard() {
-  const entry = panel.entries[panel.selectedIndex];
-  if (!entry || entry.name === '..') return;
-  const fp = remoteMode ? remoteCwd + '/' + entry.name : path.join(panel.cwd, entry.name);
+  let paths = [];
+  if (panel.marked.size > 0) {
+    // Copy all marked files
+    panel.entries.forEach(e => {
+      if (panel.marked.has(e.name)) {
+        paths.push(remoteMode ? remoteCwd + '/' + e.name : path.join(panel.cwd, e.name));
+      }
+    });
+  } else {
+    // Copy single selected file
+    const entry = panel.entries[panel.selectedIndex];
+    if (!entry || entry.name === '..') return;
+    paths.push(remoteMode ? remoteCwd + '/' + entry.name : path.join(panel.cwd, entry.name));
+  }
+  const text = paths.join(', ');
   if (isWindows) {
-    execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${fp.replace(/'/g, "''")}'`], (err) => {
-      showMessage(err ? 'Copy failed' : `Copied: ${fp}`);
+    execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`], (err) => {
+      showMessage(err ? 'Copy failed' : `Copied ${paths.length} path(s)`);
     });
   } else {
     const cmd = process.platform === 'darwin' ? 'pbcopy' : 'xclip';
     const args = process.platform === 'darwin' ? [] : ['-selection', 'clipboard'];
     const child = require('child_process').spawn(cmd, args);
-    child.stdin.end(fp);
-    child.on('close', () => showMessage(`Copied: ${fp}`));
+    child.stdin.end(text);
+    child.on('close', () => showMessage(`Copied ${paths.length} path(s)`));
   }
 }
 
@@ -1036,6 +1184,90 @@ function watchDir() {
   } catch {}
 }
 
+// ── Mouse ────────────────────────────────────────────────
+function mouseToIndex(x, y) {
+  if (!panel._grid) return -1;
+  const { ih, numCols, colWidth, pageStart } = panel._grid;
+  // x,y are relative to fileBox content area
+  const row = y;
+  const col = Math.floor(x / (colWidth + 1)); // +1 for separator
+  if (row < 0 || row >= ih || col < 0 || col >= numCols) return -1;
+  const idx = pageStart + col * ih + row;
+  return idx < panel.entries.length ? idx : -1;
+}
+
+let lastClickTime = 0;
+let lastClickIdx = -1;
+let dragStartIdx = -1;
+let isDragging = false;
+
+function mouseHitTest(data) {
+  const pos = fileBox.lpos;
+  if (!pos) return -1;
+  if (data.x < pos.xi + 1 || data.x >= pos.xl - 1 || data.y < pos.yi + 1 || data.y >= pos.yl - 1) return -1;
+  return mouseToIndex(data.x - pos.xi - 1, data.y - pos.yi - 1);
+}
+
+screen.on('mouse', (data) => {
+  if (dialogOpen) return;
+
+  if (data.action === 'mousedown') {
+    const idx = mouseHitTest(data);
+    if (idx < 0) return;
+    dragStartIdx = idx;
+    isDragging = false;
+
+    if (data.ctrl) {
+      // Ctrl+Click: toggle mark
+      const entry = panel.entries[idx];
+      if (entry && entry.name !== '..') {
+        if (panel.marked.has(entry.name)) panel.marked.delete(entry.name);
+        else panel.marked.add(entry.name);
+      }
+      panel.selectedIndex = idx;
+      render();
+    } else if (!data.shift) {
+      panel.selectedIndex = idx;
+      render();
+    }
+  }
+
+  if (data.action === 'mousemove' && dragStartIdx >= 0) {
+    const idx = mouseHitTest(data);
+    if (idx < 0) return;
+    isDragging = true;
+    // Drag select range
+    const from = Math.min(dragStartIdx, idx);
+    const to = Math.max(dragStartIdx, idx);
+    panel.marked.clear();
+    for (let i = from; i <= to; i++) {
+      if (panel.entries[i] && panel.entries[i].name !== '..') panel.marked.add(panel.entries[i].name);
+    }
+    panel.selectedIndex = idx;
+    render();
+  }
+
+  if (data.action === 'mouseup') {
+    const idx = mouseHitTest(data);
+    if (idx >= 0 && !isDragging && !data.ctrl) {
+      // Double-click detection
+      const now = Date.now();
+      if (idx === lastClickIdx && now - lastClickTime < 400) {
+        lastClickTime = 0;
+        lastClickIdx = -1;
+        panel.selectedIndex = idx;
+        openEntry();
+        dragStartIdx = -1;
+        return;
+      }
+      lastClickTime = now;
+      lastClickIdx = idx;
+    }
+    dragStartIdx = -1;
+    isDragging = false;
+  }
+});
+
 // ── Key Bindings ────────────────────────────────────────
 screen.on('keypress', (ch, key) => {
   if (!key) return;
@@ -1047,14 +1279,42 @@ screen.on('keypress', (ch, key) => {
     return;
   }
 
+  // Space — toggle mark current file and move down
+  if (ch === ' ') {
+    const entry = panel.entries[panel.selectedIndex];
+    if (entry && entry.name !== '..') {
+      if (panel.marked.has(entry.name)) panel.marked.delete(entry.name);
+      else panel.marked.add(entry.name);
+    }
+    if (panel.selectedIndex < panel.entries.length - 1) panel.selectedIndex++;
+    render();
+    return;
+  }
+
   switch (key.name) {
     case 'up':
     case 'k':
-      if (panel.selectedIndex > 0) { panel.selectedIndex--; render(); }
+      if (key.shift && panel.selectedIndex > 0) {
+        // Shift+Up — mark current then move up
+        const entry = panel.entries[panel.selectedIndex];
+        if (entry && entry.name !== '..') panel.marked.add(entry.name);
+        panel.selectedIndex--;
+        const prev = panel.entries[panel.selectedIndex];
+        if (prev && prev.name !== '..') panel.marked.add(prev.name);
+        render();
+      } else if (panel.selectedIndex > 0) { panel.selectedIndex--; render(); }
       break;
     case 'down':
     case 'j':
-      if (panel.selectedIndex < panel.entries.length - 1) { panel.selectedIndex++; render(); }
+      if (key.shift && panel.selectedIndex < panel.entries.length - 1) {
+        // Shift+Down — mark current then move down
+        const entry = panel.entries[panel.selectedIndex];
+        if (entry && entry.name !== '..') panel.marked.add(entry.name);
+        panel.selectedIndex++;
+        const next = panel.entries[panel.selectedIndex];
+        if (next && next.name !== '..') panel.marked.add(next.name);
+        render();
+      } else if (panel.selectedIndex < panel.entries.length - 1) { panel.selectedIndex++; render(); }
       break;
     case 'right':
     case 'l': {
@@ -1095,8 +1355,20 @@ screen.on('keypress', (ch, key) => {
     case 'f2':
       renameEntry();
       break;
+    case 'f4': {
+      const entry = panel.entries[panel.selectedIndex];
+      if (entry && entry.name !== '..' && entry.type !== 'dir') {
+        const fp = remoteMode ? null : path.join(panel.cwd, entry.name);
+        if (!fp) { showMessage('Cannot edit remote files'); break; }
+        require('child_process').spawn('notepad.exe', [fp], { detached: true, stdio: 'ignore' }).unref();
+      }
+      break;
+    }
     case 'f5':
       pasteFilesFromClipboard();
+      break;
+    case 'f6':
+      copyPathToClipboard();
       break;
     case 'f7':
       makeDirectory();
@@ -1123,16 +1395,19 @@ screen.on('keypress', (ch, key) => {
       showClaudeMenu();
       break;
     case 'escape':
-      if (remoteMode) {
+      if (panel.marked.size > 0) {
+        // Clear selection
+        panel.marked.clear();
+        render();
+      } else if (remoteMode) {
+        // Disconnect SSH
         disconnectSFTP();
         panel.cwd = path.resolve(process.argv[2] || process.cwd());
         panel.selectedIndex = 0;
         panel.scrollOffset = 0;
+        panel.marked.clear();
         watchDir();
         render();
-      } else {
-        cleanup();
-        process.exit(0);
       }
       break;
   }

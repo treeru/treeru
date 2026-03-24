@@ -617,7 +617,7 @@ function renderFnBar() {
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
     '{white-fg}{bold}F12{/}{#E5C07B-fg} Claude{/}',
     '{white-fg}{bold}F6{/}{#87AFD7-fg}/{/}{white-fg}{bold}Alt+Shift+C{/}{#87AFD7-fg} CopyPath{/}',
-    '{white-fg}{bold}PrtSc{/}{#87AFD7-fg} AutoSave{/}',
+    '{white-fg}{bold}PrtSc{/}{#87AFD7-fg}/{/}{white-fg}{bold}Win+Shift+S{/}{#87AFD7-fg} Screenshot{/}',
   ];
   fnBar.setContent(` ${row1.join('  ')}\n ${row2.join('  ')}`);
 }
