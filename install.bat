@@ -81,11 +81,16 @@ echo     나중에 https://nodejs.org 에서 Node.js를 직접 설치해주세�
 echo.
 
 :install_wt
-:: ── Windows Terminal check ──
+:: ── Windows Terminal check & update ──
 echo [3/6] Checking Windows Terminal...
 where wt >nul 2>&1
 if %errorlevel% equ 0 (
-    echo       Windows Terminal found
+    echo       Windows Terminal found. Updating to latest...
+    where winget >nul 2>&1
+    if !errorlevel! equ 0 (
+        winget upgrade Microsoft.WindowsTerminal --accept-source-agreements --accept-package-agreements -h --disable-interactivity >nul 2>&1
+    )
+    echo       Windows Terminal is up to date
     echo.
     goto :install_treeru
 )
