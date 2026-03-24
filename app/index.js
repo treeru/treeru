@@ -870,6 +870,14 @@ function openEntry() {
   const fp = path.join(panel.cwd, entry.name);
   if (entry.type === 'dir') navigate(fp);
   else if (isViewable(entry.name)) openViewer(fp, entry.name);
+  else if (isImageFile(entry.name)) {
+    require('child_process').exec(`start "" "${fp}"`);
+  }
+}
+
+function isImageFile(name) {
+  const ext = path.extname(name).toLowerCase();
+  return ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.gif' || ext === '.bmp' || ext === '.webp';
 }
 
 // ── File Viewer ──────────────────────────────────────────

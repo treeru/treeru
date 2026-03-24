@@ -1,3 +1,4 @@
+1072 - 이미지 파일 Enter 시 시스템 뷰어로 열기 (PNG, JPG, GIF, BMP, WebP)
 1071 - 하단 단축키 바에 Win+Shift+S 스크린샷 표시 추가
 1056 - Claude Code 연동: F9로 워크스페이스 등록, F12로 새 터미널에서 Claude Code 바로 실행
 1044 - F4 메모장(Notepad) 편집 기능 (파일 목록 + 뷰어 안에서 모두 동작)

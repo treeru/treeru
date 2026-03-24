@@ -119,7 +119,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 |---|---|
 | `↑` `↓` | Navigate files |
 | `←` `→` | Move between columns |
-| `Enter` | Enter directory / View file |
+| `Enter` | Enter directory / View file / Open image |
 | `Space` | Toggle select file |
 | `Shift+↑↓` | Range select |
 | `Backspace` | Go to parent directory |
