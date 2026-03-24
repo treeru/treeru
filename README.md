@@ -20,6 +20,18 @@ Split your Windows Terminal (Ctrl+Shift+D) — one side for your terminal, the o
  C:\Users\me\project>█
 ```
 
+## Quick Launch — Claude Code (F9 / F12)
+
+No more opening Explorer, copying folder paths, opening a terminal, `cd`, and typing the command manually.
+
+1. Navigate to your project folder in TreeRU
+2. Press `F9` to register it as a Claude Code workspace (one-time)
+3. From now on, press `F12` anytime → select the workspace → Claude Code launches in a new terminal, ready to go
+
+Works with SSH too — connect via `F10`, navigate to the remote folder, `F9` to register, then `F12` opens a new terminal tab with SSH + Claude Code automatically.
+
+Press `Del` in the `F12` menu to remove a workspace.
+
 ## Features
 
 - **Multi-column layout** — Far Manager style, responsive 2–4 columns based on terminal width. Navigate between columns with `←` `→` arrow keys
@@ -105,7 +117,9 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `F5` | Paste files from clipboard |
 | `F7` | Create new folder |
 | `Del` | Delete |
+| `F9` | Register current folder as Claude Code workspace |
 | `F10` | SSH connect / disconnect |
+| `F12` | Launch Claude Code from registered workspace |
 | `Esc` | Clear selection / Disconnect SSH |
 
 **In file viewer:**
