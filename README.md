@@ -80,14 +80,13 @@ No IDE needed. No drag-and-drop. Just copy the path and paste.
 
 > The installer will attempt to install Node.js and Windows Terminal automatically. If it fails, install Node.js manually from [nodejs.org](https://nodejs.org) and run `install.bat` again.
 
-> **Note:** The installer will start the Windows Update service (`wuauserv`) if it is stopped, as it is required for installing/updating Windows Terminal (MSIX package). To stop it again after installation:
+> **Note:** If Windows Terminal install/update fails, your Windows Update service (`wuauserv`) may be disabled. Enable it and try again:
 > ```powershell
 > # Check status
 > Get-Service wuauserv
-> # Stop the service (admin required)
-> Stop-Service wuauserv
-> # Or to disable it entirely
-> Set-Service wuauserv -StartupType Disabled
+> # Enable and start (admin required)
+> Set-Service wuauserv -StartupType Manual
+> Start-Service wuauserv
 > ```
 
 ### Manual

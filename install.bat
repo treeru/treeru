@@ -81,14 +81,6 @@ echo     나중에 https://nodejs.org 에서 Node.js를 직접 설치해주세�
 echo.
 
 :install_wt
-:: ── Windows Update service check (required for MSIX packages) ──
-sc query wuauserv | find "RUNNING" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo       Starting Windows Update service...
-    sc config wuauserv start= demand >nul 2>&1
-    net start wuauserv >nul 2>&1
-)
-
 :: ── Windows Terminal check & update ──
 echo [3/6] Checking Windows Terminal...
 where wt >nul 2>&1
