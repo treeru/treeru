@@ -85,10 +85,10 @@ echo.
 echo [3/6] Checking Windows Terminal...
 where wt >nul 2>&1
 if %errorlevel% equ 0 (
-    echo       Windows Terminal found. Updating to latest...
+    echo       Windows Terminal found. Checking for updates...
     where winget >nul 2>&1
     if !errorlevel! equ 0 (
-        winget upgrade Microsoft.WindowsTerminal --accept-source-agreements --accept-package-agreements -h --disable-interactivity >nul 2>&1
+        winget upgrade Microsoft.WindowsTerminal --accept-source-agreements --accept-package-agreements --disable-interactivity --source winget
     )
     echo       Windows Terminal is up to date
     echo.
