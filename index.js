@@ -950,7 +950,7 @@ function openViewer(fp, name) {
 
   const viewerKeys = (ch, key) => {
     if (!key) return;
-    if (key.name === 'escape' || key.name === 'q') {
+    if (key.name === 'escape' || key.name === 'q' || key.name === 'backspace') {
       closeViewer();
     } else if (key.name === 'up' || key.name === 'k') {
       viewer.scroll(-1); screen.render();
@@ -967,7 +967,7 @@ function openViewer(fp, name) {
     } else if (key.name === 'f4') {
       closeViewer();
       require('child_process').spawn('notepad.exe', [fp], { detached: true, stdio: 'ignore' }).unref();
-    } else if (ch === 'c' || ch === 'C') {
+    } else if (ch === 'c' || ch === 'C' || ch === 'ㅊ') {
       const text = content.replace(/\r\n/g, '\n');
       execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`], (err) => {
         showMessage(err ? 'Copy failed' : 'Copied to clipboard');
