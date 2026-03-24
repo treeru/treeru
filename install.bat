@@ -81,11 +81,23 @@ echo     나중에 https://nodejs.org 에서 Node.js를 직접 설치해주세�
 echo.
 
 :install_wt
+:: ── Windows Update service check (required for MSIX packages) ──
+sc query wuauserv | find "STOPPED" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo       Starting Windows Update service...
+    net start wuauserv >nul 2>&1
+)
+
 :: ── Windows Terminal check & update ──
 echo [3/6] Checking Windows Terminal...
 where wt >nul 2>&1
 if %errorlevel% equ 0 (
-    echo       Windows Terminal found
+    echo       Windows Terminal found. Updating to latest...
+    where winget >nul 2>&1
+    if !errorlevel! equ 0 (
+        winget upgrade Microsoft.WindowsTerminal --accept-source-agreements --accept-package-agreements -h --disable-interactivity --source winget 2>nul
+    )
+    echo       Windows Terminal is up to date
     echo.
     goto :install_treeru
 )
