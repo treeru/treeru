@@ -82,9 +82,10 @@ echo.
 
 :install_wt
 :: ── Windows Update service check (required for MSIX packages) ──
-sc query wuauserv | find "STOPPED" >nul 2>&1
-if %errorlevel% equ 0 (
+sc query wuauserv | find "RUNNING" >nul 2>&1
+if %errorlevel% neq 0 (
     echo       Starting Windows Update service...
+    sc config wuauserv start= demand >nul 2>&1
     net start wuauserv >nul 2>&1
 )
 
