@@ -90,6 +90,9 @@ node index.js
 
 ### Requires
 - [Node.js](https://nodejs.org) v20.18.1 LTS recommended (v18+ supported)
+- [Windows Terminal](https://apps.microsoft.com/detail/9N0DX20HK701) — required for F9/F12 Claude Code launch. Pre-installed on Windows 11, but update to latest recommended. Windows 10 users must install manually:
+  - Microsoft Store → search "Windows Terminal", or
+  - `winget install Microsoft.WindowsTerminal`
 - Windows 11 (tested on 25H2) / Windows 10
 
 ## Usage

@@ -21,11 +21,11 @@ if %errorlevel% neq 0 (
 :: ── Install path ──
 set "INSTALL_DIR=%ProgramFiles%\TreeRU"
 set "SCRIPT_DIR=%~dp0"
-echo [1/5] Install path: %INSTALL_DIR%
+echo [1/6] Install path: %INSTALL_DIR%
 echo.
 
 :: ── Node.js check ──
-echo [2/5] Checking Node.js...
+echo [2/6] Checking Node.js...
 where node >nul 2>&1
 if %errorlevel% equ 0 (
     for /f "tokens=*" %%i in ('node --version') do set NODE_VER=%%i
@@ -36,7 +36,7 @@ if %errorlevel% equ 0 (
 
 echo       Node.js not found.
 echo.
-echo [2/5] Installing Node.js v20 LTS...
+echo [2/6] Installing Node.js v20 LTS...
 
 :: ── Method 1: Direct MSI download (most reliable) ──
 echo       Downloading Node.js...
@@ -80,8 +80,43 @@ echo [!] Node.js 자동 설치에 실패했습니다. 설치를 계속합니다.
 echo     나중에 https://nodejs.org 에서 Node.js를 직접 설치해주세요.
 echo.
 
+:install_wt
+:: ── Windows Terminal check ──
+echo [3/6] Checking Windows Terminal...
+where wt >nul 2>&1
+if %errorlevel% equ 0 (
+    echo       Windows Terminal found
+    echo.
+    goto :install_treeru
+)
+
+echo       Windows Terminal not found.
+echo.
+echo [3/6] Installing Windows Terminal...
+
+where winget >nul 2>&1
+if %errorlevel% equ 0 (
+    winget install Microsoft.WindowsTerminal --accept-source-agreements --accept-package-agreements -h --source msstore --disable-interactivity 2>nul
+    where wt >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo       Windows Terminal installed
+        echo.
+        goto :install_treeru
+    )
+)
+
+echo.
+echo [!] Windows Terminal auto-install failed.
+echo     Install from Microsoft Store: "Windows Terminal"
+echo     https://apps.microsoft.com/detail/9N0DX20HK701
+echo.
+echo [!] Windows Terminal 자동 설치에 실패했습니다.
+echo     Microsoft Store에서 "Windows Terminal"을 검색하여 설치해주세요.
+echo     https://apps.microsoft.com/detail/9N0DX20HK701
+echo.
+
 :install_treeru
-echo [3/5] Installing TreeRU...
+echo [4/6] Installing TreeRU...
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
@@ -116,14 +151,14 @@ echo       Files copied
 echo.
 
 :: ── PATH ──
-echo [4/5] Registering PATH...
+echo [5/6] Registering PATH...
 
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('PATH','Machine'); if ($p -notlike '*TreeRU*') { [Environment]::SetEnvironmentVariable('PATH', $p + ';%INSTALL_DIR%', 'Machine'); Write-Host '      PATH registered' } else { Write-Host '      Already in PATH' }"
 
 echo.
 
 :: ── Shortcuts ──
-echo [5/5] Creating shortcuts...
+echo [6/6] Creating shortcuts...
 
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Desktop shortcut created'"
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%SCRIPT_DIR%TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Local shortcut created'"

@@ -90,6 +90,9 @@ node index.js
 
 ### 필수 요구사항
 - [Node.js](https://nodejs.org) v20.18.1 LTS 권장 (v18 이상 지원)
+- [Windows Terminal](https://apps.microsoft.com/detail/9N0DX20HK701) — F9/F12 Claude Code 실행에 필요. Windows 11은 기본 내장이지만 최신 버전 업데이트 권장. Windows 10은 직접 설치 필요:
+  - Microsoft Store → "Windows Terminal" 검색, 또는
+  - `winget install Microsoft.WindowsTerminal`
 - Windows 11 (25H2에서 테스트) / Windows 10
 
 ## Usage
