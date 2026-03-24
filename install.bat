@@ -31,7 +31,7 @@ if %errorlevel% equ 0 (
     for /f "tokens=*" %%i in ('node --version') do set NODE_VER=%%i
     echo       Node.js !NODE_VER! found
     echo.
-    goto :install_treeru
+    goto :install_wt
 )
 
 echo       Node.js not found.
@@ -53,7 +53,7 @@ if exist "%NODE_MSI%" (
     if !errorlevel! equ 0 (
         echo       Node.js installed
         echo.
-        goto :install_treeru
+        goto :install_wt
     )
 )
 
@@ -67,7 +67,7 @@ if %errorlevel% equ 0 (
     if !errorlevel! equ 0 (
         echo       Node.js installed
         echo.
-        goto :install_treeru
+        goto :install_wt
     )
 )
 
