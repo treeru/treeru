@@ -78,7 +78,17 @@ No IDE needed. No drag-and-drop. Just copy the path and paste.
 2. Extract ZIP → run `install.bat` (auto-requests admin)
 3. Run `treeru` in a new terminal, or click the desktop icon
 
-> The installer will attempt to install Node.js automatically. If it fails, install Node.js manually from [nodejs.org](https://nodejs.org) and run `install.bat` again.
+> The installer will attempt to install Node.js and Windows Terminal automatically. If it fails, install Node.js manually from [nodejs.org](https://nodejs.org) and run `install.bat` again.
+
+> **Note:** The installer will start the Windows Update service (`wuauserv`) if it is stopped, as it is required for installing/updating Windows Terminal (MSIX package). To stop it again after installation:
+> ```powershell
+> # Check status
+> Get-Service wuauserv
+> # Stop the service (admin required)
+> Stop-Service wuauserv
+> # Or to disable it entirely
+> Set-Service wuauserv -StartupType Disabled
+> ```
 
 ### Manual
 ```bash

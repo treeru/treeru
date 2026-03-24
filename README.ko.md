@@ -78,7 +78,17 @@ IDE 없이, 드래그 앤 드롭 없이. 경로 복사해서 붙여넣기만 하
 2. ZIP 압축 해제 → `install.bat` 실행 (자동 관리자 권한 요청)
 3. 새 터미널에서 `treeru` 실행, 또는 바탕화면 아이콘 클릭
 
-> 설치 과정에서 Node.js를 자동으로 설치합니다. 자동 설치가 실패하면 [nodejs.org](https://nodejs.org)에서 직접 설치 후 `install.bat`을 다시 실행해주세요.
+> 설치 과정에서 Node.js와 Windows Terminal을 자동으로 설치합니다. 자동 설치가 실패하면 [nodejs.org](https://nodejs.org)에서 직접 설치 후 `install.bat`을 다시 실행해주세요.
+
+> **참고:** Windows Terminal 설치/업데이트에 필요한 Windows Update 서비스(`wuauserv`)가 꺼져있으면 자동으로 시작합니다. 설치 후 다시 끄려면:
+> ```powershell
+> # 상태 확인
+> Get-Service wuauserv
+> # 서비스 중지 (관리자 권한 필요)
+> Stop-Service wuauserv
+> # 완전히 비활성화하려면
+> Set-Service wuauserv -StartupType Disabled
+> ```
 
 ### Manual
 ```bash
