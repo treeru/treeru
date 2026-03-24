@@ -25,6 +25,9 @@
   "type": "commonjs",
   "dependencies": {
     "blessed": "^0.1.81",
+    "puppeteer-core": "^24.40.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "ssh2": "^1.17.0"
   }
 }

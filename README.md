@@ -32,6 +32,22 @@ Works with SSH too — connect via `F10`, navigate to the remote folder, `F9` to
 
 Press `Del` in the `F12` menu to remove a workspace.
 
+## Claude Usage Monitor (F8)
+
+Press `F8` to see your Claude usage in the header bar — session usage with remaining time, and weekly usage percentage.
+
+```
+  TreeRU v1073                          Session 12% 2:53 | Weekly 5%  3 SSH hosts
+```
+
+- **First press** takes ~3 seconds (launches a headless browser in the background)
+- **Subsequent presses** refresh in ~0.4 seconds (reuses the running browser)
+- Colors change based on usage: blue (<50%), yellow (50–80%), red (>80%)
+
+**First-time setup:** On the first `F8` press, a Chrome window will open for you to log in to [claude.ai](https://claude.ai). Close it after logging in, then press `F8` again. Your session is saved locally — you won't need to log in again until it expires.
+
+> Requires Google Chrome or Microsoft Edge. Session cookies are stored in `~/.treeru_claude_profile/`.
+
 ## Features
 
 - **Multi-column layout** — Far Manager style, responsive 2–4 columns based on terminal width. Navigate between columns with `←` `→` arrow keys
@@ -99,6 +115,7 @@ node index.js
 
 ### Requires
 - [Node.js](https://nodejs.org) v20.18.1 LTS recommended (v18+ supported)
+- [Google Chrome](https://www.google.com/chrome/) or Microsoft Edge — required for F8 Claude usage monitor (headless browser). Edge is pre-installed on Windows 10/11
 - [Windows Terminal](https://apps.microsoft.com/detail/9N0DX20HK701) — required for F9/F12 Claude Code launch. Pre-installed on Windows 11, but update to latest recommended. Windows 10 users must install manually:
   - Microsoft Store → search "Windows Terminal", or
   - `winget install Microsoft.WindowsTerminal`
@@ -129,6 +146,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `F5` | Paste files from clipboard |
 | `F7` | Create new folder |
 | `Del` | Delete |
+| `F8` | Refresh Claude usage (shown in header) |
 | `F9` | Register current folder as Claude Code workspace |
 | `F10` | SSH connect / disconnect |
 | `F12` | Launch Claude Code from registered workspace |

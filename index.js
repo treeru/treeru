@@ -123,6 +123,137 @@ function launchClaudeCode(ws) {
   showMessage(`Claude Code: ${wsLabel(ws)}`);
 }
 
+// ── Claude Usage (F8) ───────────────────────────────────
+const CLAUDE_PROFILE_DIR = path.join(os.homedir(), '.treeru_claude_profile');
+let claudeUsageText = '';
+let claudeUsageFetching = false;
+let claudeBrowser = null;
+let claudePage = null;
+
+function findChromePath() {
+  const candidates = [
+    path.join(process.env.PROGRAMFILES || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(process.env.PROGRAMFILES || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    path.join(process.env['PROGRAMFILES(X86)'] || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+  ];
+  for (const p of candidates) {
+    try { fs.accessSync(p); return p; } catch {}
+  }
+  return null;
+}
+
+async function ensureClaudeBrowser() {
+  if (claudeBrowser && claudePage) {
+    try { await claudePage.evaluate(() => true); return true; } catch {}
+    claudeBrowser = null; claudePage = null;
+  }
+  let puppeteer;
+  try {
+    puppeteer = require('puppeteer-extra');
+    puppeteer.use(require('puppeteer-extra-plugin-stealth')());
+  } catch { return false; }
+  const chromePath = findChromePath();
+  if (!chromePath) return false;
+  try {
+    claudeBrowser = await puppeteer.launch({
+      executablePath: chromePath,
+      headless: 'new',
+      userDataDir: CLAUDE_PROFILE_DIR,
+      args: ['--disable-gpu', '--disable-extensions', '--window-size=800,600'],
+    });
+    claudePage = await claudeBrowser.newPage();
+    await claudePage.setRequestInterception(true);
+    claudePage.on('request', req => {
+      const t = req.resourceType();
+      if (t === 'image' || t === 'font' || t === 'media') req.abort();
+      else req.continue();
+    });
+    await claudePage.goto('https://claude.ai/settings/usage', {
+      waitUntil: 'networkidle2', timeout: 15000,
+    });
+    return true;
+  } catch {
+    claudeBrowser = null; claudePage = null;
+    return false;
+  }
+}
+
+async function fetchClaudeUsage() {
+  if (!await ensureClaudeBrowser()) return { error: true };
+  try {
+    const data = await claudePage.evaluate(async () => {
+      const org = document.cookie.match(/lastActiveOrg=([^;]+)/)?.[1];
+      if (!org) return null;
+      const r = await fetch('/api/organizations/' + org + '/usage');
+      if (!r.ok) return null;
+      return r.json();
+    });
+    if (!data) return { loggedIn: false };
+    return { loggedIn: true, usage: data };
+  } catch {
+    return { error: true };
+  }
+}
+
+function formatResetTime(resetsAt) {
+  if (!resetsAt) return '';
+  const diff = new Date(resetsAt) - Date.now();
+  if (diff <= 0) return '0:00';
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  return `${h}:${m.toString().padStart(2, '0')}`;
+}
+
+function refreshClaudeUsage() {
+  if (claudeUsageFetching) return;
+  claudeUsageFetching = true;
+  claudeUsageText = '{#E5C07B-fg}Loading...{/}';
+  render();
+
+  fetchClaudeUsage().then(result => {
+    claudeUsageFetching = false;
+    if (result.error) {
+      claudeUsageText = '';
+      render();
+      return;
+    }
+    if (!result.loggedIn) {
+      claudeUsageText = '';
+      render();
+      showMessage('{#E5C07B-fg}Login required - browser will open. Press F8 after login{/}');
+      const chromePath = findChromePath();
+      if (chromePath) {
+        require('child_process').spawn(chromePath, [
+          `--user-data-dir=${CLAUDE_PROFILE_DIR}`,
+          'https://claude.ai/settings/usage',
+        ], { detached: true, stdio: 'ignore' }).unref();
+      }
+      return;
+    }
+
+    const u = result.usage;
+    const parts = [];
+    if (u.five_hour) {
+      const time = formatResetTime(u.five_hour.resets_at);
+      const pct = Math.round(u.five_hour.utilization);
+      const color = pct >= 80 ? '#E06C75' : pct >= 50 ? '#E5C07B' : '#61AFEF';
+      parts.push(`{${color}-fg}Session ${pct}% ${time}{/}`);
+    }
+    if (u.seven_day) {
+      const pct = Math.round(u.seven_day.utilization);
+      const color = pct >= 80 ? '#E06C75' : pct >= 50 ? '#E5C07B' : '#61AFEF';
+      parts.push(`{${color}-fg}Weekly ${pct}%{/}`);
+    }
+    claudeUsageText = parts.length > 0 ? parts.join(' {#444444-fg}|{/} ') : '';
+    render();
+  }).catch(() => {
+    claudeUsageFetching = false;
+    claudeUsageText = '';
+    render();
+  });
+}
+
 function showClaudeMenu() {
   const list = loadClaudeWorkspaces();
   if (list.length === 0) {
@@ -162,6 +293,12 @@ function showClaudeMenu() {
     setTimeout(() => { dialogOpen = false; launchClaudeCode(list[idx]); }, 50);
   });
   menuList.on('cancel', () => {
+    cleanup();
+    render();
+    setTimeout(() => { dialogOpen = false; }, 50);
+  });
+  menuList.key(['left', 'right'], () => {}); // absorb arrow keys
+  menuList.key('escape', () => {
     cleanup();
     render();
     setTimeout(() => { dialogOpen = false; }, 50);
@@ -582,8 +719,10 @@ function renderHeader() {
     const hostCount = Object.keys(sshConfig).length;
     right = hostCount > 0 ? `{${C.dim}-fg}${hostCount} SSH hosts{/} ` : '';
   }
-  const pad = Math.max(0, screen.width - title.length - right.length + 20);
-  headerBar.setContent(`{bold}{cyan-fg}${title}{/}${' '.repeat(pad)}${right}`);
+  const usagePart = claudeUsageText ? claudeUsageText + '  ' : '';
+  const rightFull = usagePart + right;
+  const pad = Math.max(0, screen.width - title.length - rightFull.replace(/\{[^}]*\}/g, '').length);
+  headerBar.setContent(`{bold}{cyan-fg}${title}{/}${' '.repeat(pad)}${rightFull}`);
 }
 
 function renderStatus() {
@@ -613,6 +752,7 @@ function renderFnBar() {
     '{white-fg}{bold}Del{/}{#87AFD7-fg} Delete{/}',
   ];
   const row2 = [
+    '{white-fg}{bold}F8{/}{#E5C07B-fg} Usage{/}',
     '{white-fg}{bold}F9{/}{#E5C07B-fg} Claude+{/}',
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
     '{white-fg}{bold}F12{/}{#E5C07B-fg} Claude{/}',
@@ -1384,6 +1524,9 @@ screen.on('keypress', (ch, key) => {
     case 'delete':
       deleteEntry();
       break;
+    case 'f8':
+      refreshClaudeUsage();
+      break;
     case 'f9':
       registerClaudeWorkspace();
       break;
@@ -1451,6 +1594,7 @@ function cleanup() {
   if (clipInterval) { clearInterval(clipInterval); clipInterval = null; }
   disconnectSFTP();
   if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+  if (claudeBrowser) { claudeBrowser.close().catch(() => {}); claudeBrowser = null; }
   removePid();
 }
 process.on('SIGINT', () => { cleanup(); process.exit(0); });
