@@ -288,16 +288,17 @@ function showClaudeLoginGuide() {
   if (claudeLoginBox) return;
   claudeLoginBox = blessed.box({
     parent: screen, top: 'center', left: 'center',
-    width: 58, height: 7,
+    width: 58, height: 8,
     border: { type: 'line' }, tags: true,
     style: { border: { fg: '#E5C07B' }, bg: C.header, fg: C.fg },
     label: ' Claude Usage ',
     content: [
       '',
-      '  {#E5C07B-fg}Please log in to claude.ai in the browser.{/}',
-      '  {#87AFD7-fg}One-time login — usage will auto-refresh after.{/}',
+      '  {#E5C07B-fg}A browser window has opened.{/}',
+      '  {#E5C07B-fg}Please log in to claude.ai (one-time only).{/}',
       '',
-      '  {#666666-fg}Close the browser after login, then press F8 again.{/}',
+      '  {#87AFD7-fg}After login, close the browser and press F8.{/}',
+      '  {#87AFD7-fg}Usage will appear in the top-right header.{/}',
     ].join('\n'),
   });
   screen.render();
@@ -1174,6 +1175,7 @@ function openViewer(fp, name) {
     parent: screen, top: 0, left: 0, width: '100%', height: '100%-1',
     border: { type: 'line' }, tags: true,
     scrollable: true, alwaysScroll: true, mouse: true, keys: true,
+    inputOnFocus: false,
     scrollbar: { ch: '█', style: { fg: 'gray' } },
     style: { border: { fg: C.borderHi }, bg: 'black', fg: 'white' },
     label: ` ${name} (${lines.length} lines) `,
@@ -1215,7 +1217,7 @@ function openViewer(fp, name) {
     } else if (key.name === 'f4') {
       closeViewer();
       require('child_process').spawn('notepad.exe', [fp], { detached: true, stdio: 'ignore' }).unref();
-    } else if (ch === 'c' || ch === 'C' || ch === 'ㅊ') {
+    } else if (ch === 'c' || ch === 'C') {
       const text = content.replace(/\r\n/g, '\n');
       execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`], (err) => {
         showMessage(err ? 'Copy failed' : 'Copied to clipboard');

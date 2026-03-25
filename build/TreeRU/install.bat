@@ -232,8 +232,10 @@ if !errorlevel! neq 0 (
     echo   [!] Claude Code 미설치 - 실행: npm install -g @anthropic-ai/claude-code
     echo.
 )
-echo   Open a new terminal and run: treeru
-echo   새 터미널을 열고 treeru 를 입력하세요.
+echo   Open a new terminal and type "treeru" from any directory.
+echo   Or click the TreeRU icon on your desktop.
+echo.
+echo   새 터미널을 열고 어느 경로에서든 treeru 를 입력하세요.
 echo   또는 바탕화면의 TreeRU 아이콘을 클릭하세요.
 echo   ===============================================
 

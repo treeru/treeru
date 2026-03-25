@@ -27,8 +27,36 @@
 - gh CLI 경로: `/c/Program Files/GitHub CLI` (PATH에 추가 필요)
 - **릴리즈 시 반드시 ZIP 첨부**: `build/TreeRU/` 폴더를 ZIP으로 만들어서 릴리즈에 업로드
   - ZIP 만들기 전에 `build/TreeRU/app/`의 index.js, package.json, CHANGELOG.md를 최신 소스로 동기화
-  - node_modules도 `npm install --production`으로 최신화
+  - **node_modules는 ZIP에 포함하지 않음** — install.bat이 `npm install --production`으로 설치함
+  - ZIP에 넣기 전 `rm -rf build/TreeRU/app/node_modules` 확인
   - 명령: `gh release upload vX.Y.Z TreeRU-vX.Y.Z.zip`
+
+## 빌드/배포 구조 (중요)
+
+### ZIP 배포 폴더 구조
+```
+build/TreeRU/           ← ZIP으로 압축하는 루트
+├── install.bat         ← 설치 스크립트 (여기에만 있어야 함, app/ 안에 들어가면 안 됨)
+└── app/                ← 앱 소스 파일들
+    ├── index.js
+    ├── package.json
+    ├── CHANGELOG.md
+    ├── clip_check.ps1
+    ├── clip_save.ps1
+    └── treeru.ico
+```
+
+### 빌드 시 주의사항
+- **node_modules는 절대 ZIP에 포함하지 않음** — install.bat이 `npm install --production`으로 설치
+- **install.bat은 `build/TreeRU/` 루트에 위치** — `app/` 안에 넣으면 안 됨
+- **install.bat은 반드시 CRLF 줄바꿈** — Windows cmd가 LF만 있으면 명령어 파싱 실패
+  - Write 도구로 생성하면 LF가 됨 → `sed -i 's/\r$//' file && sed -i 's/$/\r/' file`로 CRLF 변환 필수
+  - 또는 `xxd file | head -3`으로 `0d 0a` 확인
+- ZIP 만들기 전 체크리스트:
+  1. `build/TreeRU/app/`의 index.js, package.json, CHANGELOG.md를 최신 소스로 복사
+  2. `rm -rf build/TreeRU/app/node_modules`
+  3. install.bat CRLF 확인
+  4. `powershell Compress-Archive -Path 'TreeRU\*' -DestinationPath 'TreeRU-vX.Y.Z.zip' -Force`
 
 ## Git 설정
 - remote는 SSH 방식 사용: `git@github.com:treeru/treeru.git`
