@@ -123,10 +123,13 @@ function launchClaudeCode(ws) {
   showMessage(`Claude Code: ${wsLabel(ws)}`);
 }
 
-// ── Claude Usage (F8) ───────────────────────────────────
+// ── Claude Usage (F8 toggle) ────────────────────────────
 const CLAUDE_PROFILE_DIR = path.join(os.homedir(), '.treeru_claude_profile');
+const CLAUDE_USAGE_INTERVAL = 60000; // 1 minute
 let claudeUsageText = '';
 let claudeUsageFetching = false;
+let claudeUsageActive = false;
+let claudeUsageTimer = null;
 let claudeBrowser = null;
 let claudePage = null;
 
@@ -179,6 +182,14 @@ async function ensureClaudeBrowser() {
   }
 }
 
+async function closeClaudeBrowser() {
+  if (claudeBrowser) {
+    await claudeBrowser.close().catch(() => {});
+    claudeBrowser = null;
+    claudePage = null;
+  }
+}
+
 async function fetchClaudeUsage() {
   if (!await ensureClaudeBrowser()) return { error: true };
   try {
@@ -205,22 +216,37 @@ function formatResetTime(resetsAt) {
   return `${h}:${m.toString().padStart(2, '0')}`;
 }
 
-function refreshClaudeUsage() {
-  if (claudeUsageFetching) return;
+function buildUsageText(usage) {
+  const parts = [];
+  if (usage.five_hour) {
+    const time = formatResetTime(usage.five_hour.resets_at);
+    const pct = Math.round(usage.five_hour.utilization);
+    const color = pct >= 80 ? '#E06C75' : pct >= 50 ? '#E5C07B' : '#61AFEF';
+    parts.push(`{${color}-fg}Session ${pct}% ${time}{/}`);
+  }
+  if (usage.seven_day) {
+    const pct = Math.round(usage.seven_day.utilization);
+    const color = pct >= 80 ? '#E06C75' : pct >= 50 ? '#E5C07B' : '#61AFEF';
+    parts.push(`{${color}-fg}Weekly ${pct}%{/}`);
+  }
+  if (parts.length > 0) parts.push('{#555555-fg}AUTO{/}');
+  return parts.length > 0 ? parts.join(' {#444444-fg}|{/} ') : '';
+}
+
+function doClaudeUsageFetch() {
+  if (claudeUsageFetching || !claudeUsageActive) return;
   claudeUsageFetching = true;
-  claudeUsageText = '{#E5C07B-fg}Loading...{/}';
-  render();
 
   fetchClaudeUsage().then(result => {
     claudeUsageFetching = false;
+    if (!claudeUsageActive) return;
     if (result.error) {
-      claudeUsageText = '';
+      claudeUsageText = '{#E06C75-fg}Usage error{/} {#555555-fg}AUTO{/}';
       render();
       return;
     }
     if (!result.loggedIn) {
-      claudeUsageText = '';
-      render();
+      stopClaudeUsage();
       showMessage('{#E5C07B-fg}Login required - browser will open. Press F8 after login{/}');
       const chromePath = findChromePath();
       if (chromePath) {
@@ -231,27 +257,39 @@ function refreshClaudeUsage() {
       }
       return;
     }
-
-    const u = result.usage;
-    const parts = [];
-    if (u.five_hour) {
-      const time = formatResetTime(u.five_hour.resets_at);
-      const pct = Math.round(u.five_hour.utilization);
-      const color = pct >= 80 ? '#E06C75' : pct >= 50 ? '#E5C07B' : '#61AFEF';
-      parts.push(`{${color}-fg}Session ${pct}% ${time}{/}`);
-    }
-    if (u.seven_day) {
-      const pct = Math.round(u.seven_day.utilization);
-      const color = pct >= 80 ? '#E06C75' : pct >= 50 ? '#E5C07B' : '#61AFEF';
-      parts.push(`{${color}-fg}Weekly ${pct}%{/}`);
-    }
-    claudeUsageText = parts.length > 0 ? parts.join(' {#444444-fg}|{/} ') : '';
+    claudeUsageText = buildUsageText(result.usage);
     render();
   }).catch(() => {
     claudeUsageFetching = false;
-    claudeUsageText = '';
+    if (!claudeUsageActive) return;
+    claudeUsageText = '{#E06C75-fg}Usage error{/} {#555555-fg}AUTO{/}';
     render();
   });
+}
+
+function startClaudeUsage() {
+  claudeUsageActive = true;
+  claudeUsageText = '{#E5C07B-fg}Loading...{/}';
+  render();
+  doClaudeUsageFetch();
+  claudeUsageTimer = setInterval(doClaudeUsageFetch, CLAUDE_USAGE_INTERVAL);
+}
+
+function stopClaudeUsage() {
+  claudeUsageActive = false;
+  if (claudeUsageTimer) { clearInterval(claudeUsageTimer); claudeUsageTimer = null; }
+  claudeUsageText = '';
+  closeClaudeBrowser();
+  render();
+}
+
+function toggleClaudeUsage() {
+  if (claudeUsageActive) {
+    stopClaudeUsage();
+    showMessage('{#87AFD7-fg}Usage monitor OFF{/}');
+  } else {
+    startClaudeUsage();
+  }
 }
 
 function showClaudeMenu() {
@@ -1525,7 +1563,7 @@ screen.on('keypress', (ch, key) => {
       deleteEntry();
       break;
     case 'f8':
-      refreshClaudeUsage();
+      toggleClaudeUsage();
       break;
     case 'f9':
       registerClaudeWorkspace();
@@ -1549,15 +1587,6 @@ screen.on('keypress', (ch, key) => {
       if (panel.marked.size > 0) {
         // Clear selection
         panel.marked.clear();
-        render();
-      } else if (remoteMode) {
-        // Disconnect SSH
-        disconnectSFTP();
-        panel.cwd = path.resolve(process.argv[2] || process.cwd());
-        panel.selectedIndex = 0;
-        panel.scrollOffset = 0;
-        panel.marked.clear();
-        watchDir();
         render();
       }
       break;
@@ -1594,6 +1623,7 @@ function cleanup() {
   if (clipInterval) { clearInterval(clipInterval); clipInterval = null; }
   disconnectSFTP();
   if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+  if (claudeUsageTimer) { clearInterval(claudeUsageTimer); claudeUsageTimer = null; }
   if (claudeBrowser) { claudeBrowser.close().catch(() => {}); claudeBrowser = null; }
   removePid();
 }

@@ -151,7 +151,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `F10` | SSH connect / disconnect |
 | `F12` | Launch Claude Code from registered workspace |
 | `PrtSc` / `Win+Shift+S` | Take screenshot → auto-saves to current folder |
-| `Esc` | Clear selection / Disconnect SSH |
+| `Esc` | Clear selection |
 
 **In file viewer:**
 
