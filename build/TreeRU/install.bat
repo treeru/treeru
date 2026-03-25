@@ -8,7 +8,11 @@ net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
     echo   Requesting administrator privileges...
-    powershell -NoProfile -Command "Start-Process cmd.exe -ArgumentList '/k cd /d \"%~dp0\" ^& \"%~nx0\"' -Verb RunAs"
+    echo @echo off > "%TEMP%\treeru_elevate.bat"
+    echo cd /d "%~dp0" >> "%TEMP%\treeru_elevate.bat"
+    echo call "%~f0" >> "%TEMP%\treeru_elevate.bat"
+    echo pause >> "%TEMP%\treeru_elevate.bat"
+    powershell -NoProfile -Command "Start-Process '%TEMP%\treeru_elevate.bat' -Verb RunAs"
     exit /b
 )
 
