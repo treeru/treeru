@@ -246,15 +246,13 @@ function doClaudeUsageFetch() {
       return;
     }
     if (!result.loggedIn) {
-      stopClaudeUsage();
-      showMessage('{#E5C07B-fg}Login required - browser will open. Press F8 after login{/}');
-      const chromePath = findChromePath();
-      if (chromePath) {
-        require('child_process').spawn(chromePath, [
-          `--user-data-dir=${CLAUDE_PROFILE_DIR}`,
-          'https://claude.ai/settings/usage',
-        ], { detached: true, stdio: 'ignore' }).unref();
-      }
+      // Session expired — show login guide
+      if (claudeUsageTimer) { clearInterval(claudeUsageTimer); claudeUsageTimer = null; }
+      claudeUsageText = '';
+      closeClaudeBrowser();
+      render();
+      showClaudeLoginGuide();
+      openClaudeLogin();
       return;
     }
     claudeUsageText = buildUsageText(result.usage);
@@ -267,8 +265,62 @@ function doClaudeUsageFetch() {
   });
 }
 
+function hasClaudeProfile() {
+  try {
+    fs.accessSync(path.join(CLAUDE_PROFILE_DIR, 'Default', 'Network', 'Cookies'));
+    return true;
+  } catch { return false; }
+}
+
+function openClaudeLogin() {
+  const chromePath = findChromePath();
+  if (chromePath) {
+    require('child_process').spawn(chromePath, [
+      `--user-data-dir=${CLAUDE_PROFILE_DIR}`,
+      'https://claude.ai/settings/usage',
+    ], { detached: true, stdio: 'ignore' }).unref();
+  }
+}
+
+let claudeLoginBox = null;
+
+function showClaudeLoginGuide() {
+  if (claudeLoginBox) return;
+  claudeLoginBox = blessed.box({
+    parent: screen, top: 'center', left: 'center',
+    width: 58, height: 7,
+    border: { type: 'line' }, tags: true,
+    style: { border: { fg: '#E5C07B' }, bg: C.header, fg: C.fg },
+    label: ' Claude Usage ',
+    content: [
+      '',
+      '  {#E5C07B-fg}Please log in to claude.ai in the browser.{/}',
+      '  {#87AFD7-fg}One-time login — usage will auto-refresh after.{/}',
+      '',
+      '  {#666666-fg}Close the browser after login, then press F8 again.{/}',
+    ].join('\n'),
+  });
+  screen.render();
+}
+
+function hideClaudeLoginGuide() {
+  if (claudeLoginBox) {
+    claudeLoginBox.destroy();
+    claudeLoginBox = null;
+    render();
+  }
+}
+
 function startClaudeUsage() {
   claudeUsageActive = true;
+
+  if (!hasClaudeProfile()) {
+    // First time — no profile exists, open login browser immediately
+    showClaudeLoginGuide();
+    openClaudeLogin();
+    return;
+  }
+
   claudeUsageText = '{#E5C07B-fg}Loading...{/}';
   render();
   doClaudeUsageFetch();
@@ -279,11 +331,21 @@ function stopClaudeUsage() {
   claudeUsageActive = false;
   if (claudeUsageTimer) { clearInterval(claudeUsageTimer); claudeUsageTimer = null; }
   claudeUsageText = '';
+  hideClaudeLoginGuide();
   closeClaudeBrowser();
   render();
 }
 
 function toggleClaudeUsage() {
+  if (claudeLoginBox) {
+    // Login guide is showing — user logged in and pressed F8 again
+    hideClaudeLoginGuide();
+    claudeUsageText = '{#E5C07B-fg}Loading...{/}';
+    render();
+    doClaudeUsageFetch();
+    claudeUsageTimer = setInterval(doClaudeUsageFetch, CLAUDE_USAGE_INTERVAL);
+    return;
+  }
   if (claudeUsageActive) {
     stopClaudeUsage();
     showMessage('{#87AFD7-fg}Usage monitor OFF{/}');
