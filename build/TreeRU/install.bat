@@ -5,7 +5,7 @@ title TreeRU Installer
 color 0A
 
 echo.
-echo   TreeRU Installer v1.0
+echo   TreeRU Installer v1.1
 echo   Terminal File Explorer
 echo.
 
@@ -13,19 +13,18 @@ echo.
 net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo   Requesting administrator privileges...
-    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\"\"' -Verb RunAs"
-    endlocal
-    exit
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -WorkingDirectory '%~dp0' -Verb RunAs"
+    exit /b
 )
 
 :: ── Install path ──
 set "INSTALL_DIR=%ProgramFiles%\TreeRU"
 set "SCRIPT_DIR=%~dp0"
-echo [1/6] Install path: %INSTALL_DIR%
+echo [1/7] Install path: %INSTALL_DIR%
 echo.
 
 :: ── Node.js check ──
-echo [2/6] Checking Node.js...
+echo [2/7] Checking Node.js...
 where node >nul 2>&1
 if %errorlevel% equ 0 (
     for /f "tokens=*" %%i in ('node --version') do set NODE_VER=%%i
@@ -36,7 +35,7 @@ if %errorlevel% equ 0 (
 
 echo       Node.js not found.
 echo.
-echo [2/6] Installing Node.js v20 LTS...
+echo [2/7] Installing Node.js v20 LTS...
 
 :: ── Method 1: Direct MSI download (most reliable) ──
 echo       Downloading Node.js...
@@ -82,31 +81,22 @@ echo.
 
 :install_wt
 :: ── Windows Terminal check & update ──
-echo [3/6] Checking Windows Terminal...
+echo [3/7] Checking Windows Terminal...
 where wt >nul 2>&1
 if %errorlevel% equ 0 (
-    for /f "tokens=*" %%v in ('wt --version 2^>nul') do set WT_VER=%%v
-    echo       Windows Terminal !WT_VER! found
-    echo       Checking for updates...
+    echo       Windows Terminal found. Updating to latest...
     where winget >nul 2>&1
     if !errorlevel! equ 0 (
-        winget upgrade Microsoft.WindowsTerminal --accept-source-agreements --accept-package-agreements --disable-interactivity --source winget
-        if !errorlevel! neq 0 (
-            echo.
-            echo [!] Auto-update failed. Update manually from Microsoft Store:
-            echo     https://apps.microsoft.com/detail/9N0DX20HK701
-            echo.
-        ) else (
-            echo       Windows Terminal updated
-        )
+        winget upgrade Microsoft.WindowsTerminal --accept-source-agreements --accept-package-agreements -h --disable-interactivity --source winget 2>nul
     )
+    echo       Windows Terminal is up to date
     echo.
-    goto :install_treeru
+    goto :install_claude
 )
 
 echo       Windows Terminal not found.
 echo.
-echo [3/6] Installing Windows Terminal...
+echo [3/7] Installing Windows Terminal...
 
 where winget >nul 2>&1
 if %errorlevel% equ 0 (
@@ -115,7 +105,7 @@ if %errorlevel% equ 0 (
     if !errorlevel! equ 0 (
         echo       Windows Terminal installed
         echo.
-        goto :install_treeru
+        goto :install_claude
     )
 )
 
@@ -129,8 +119,41 @@ echo     Microsoft Store에서 "Windows Terminal"을 검색하여 설치해주�
 echo     https://apps.microsoft.com/detail/9N0DX20HK701
 echo.
 
+:install_claude
+:: ── Claude Code global check & install ──
+echo [4/7] Checking Claude Code...
+where claude >nul 2>&1
+if %errorlevel% equ 0 (
+    echo       Claude Code found
+    echo.
+    goto :install_treeru
+)
+
+echo       Claude Code not found.
+echo.
+echo [4/7] Installing Claude Code globally...
+
+where node >nul 2>&1
+if %errorlevel% equ 0 (
+    call npm install -g @anthropic-ai/claude-code 2>nul
+    where claude >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo       Claude Code installed globally
+        echo.
+        goto :install_treeru
+    )
+)
+
+echo.
+echo [!] Claude Code auto-install failed.
+echo     Install manually: npm install -g @anthropic-ai/claude-code
+echo.
+echo [!] Claude Code 자동 설치에 실패했습니다.
+echo     수동 설치: npm install -g @anthropic-ai/claude-code
+echo.
+
 :install_treeru
-echo [4/6] Installing TreeRU...
+echo [5/7] Installing TreeRU...
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
@@ -165,38 +188,37 @@ echo       Files copied
 echo.
 
 :: ── PATH ──
-echo [5/6] Registering PATH...
+echo [6/7] Registering PATH...
 
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('PATH','Machine'); if ($p -notlike '*TreeRU*') { [Environment]::SetEnvironmentVariable('PATH', $p + ';%INSTALL_DIR%', 'Machine'); Write-Host '      PATH registered' } else { Write-Host '      Already in PATH' }"
 
 echo.
 
 :: ── Shortcuts ──
-echo [6/6] Creating shortcuts...
+echo [7/7] Creating shortcuts...
 
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Desktop shortcut created'"
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%SCRIPT_DIR%TreeRU.lnk'); $sc.TargetPath = 'cmd.exe'; $sc.Arguments = '/k \"\"%INSTALL_DIR%\treeru.bat\"\"'; $sc.IconLocation = '%INSTALL_DIR%\treeru.ico,0'; $sc.Description = 'TreeRU - Terminal File Explorer'; $sc.Save(); Write-Host '      Local shortcut created'"
 
-:: ── Verify installation ──
+:: ── Summary ──
+echo.
+echo   ===============================================
+echo   Installation complete!
+echo   설치가 완료되었습니다!
+echo.
+
 where node >nul 2>&1
 if !errorlevel! neq 0 (
+    echo   [!] Node.js missing - install from https://nodejs.org
+    echo   [!] Node.js 미설치 - https://nodejs.org 에서 설치 필요
     echo.
-    echo   ===============================================
-    echo   Files installed, but Node.js is missing.
-    echo   Install Node.js from https://nodejs.org
-    echo   Then open a new terminal and run: treeru
-    echo.
-    echo   파일은 설치되었으나 Node.js가 없습니다.
-    echo   https://nodejs.org 에서 Node.js 설치 후
-    echo   새 터미널에서 treeru 를 입력하세요.
-    echo   ===============================================
-) else (
-    echo.
-    echo   ===============================================
-    echo   Installation complete!
-    echo   설치가 완료되었습니다!
 )
-echo.
+where claude >nul 2>&1
+if !errorlevel! neq 0 (
+    echo   [!] Claude Code missing - run: npm install -g @anthropic-ai/claude-code
+    echo   [!] Claude Code 미설치 - 실행: npm install -g @anthropic-ai/claude-code
+    echo.
+)
 echo   Open a new terminal and run: treeru
 echo   새 터미널을 열고 treeru 를 입력하세요.
 echo   또는 바탕화면의 TreeRU 아이콘을 클릭하세요.
@@ -204,4 +226,3 @@ echo   ===============================================
 echo.
 pause
 endlocal
-exit

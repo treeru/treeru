@@ -25,6 +25,10 @@
 - 릴리즈 노트는 **영어**로 작성 (Initial Release와 일관성 유지)
 - gh CLI 사용: `gh release create vX.Y.Z`
 - gh CLI 경로: `/c/Program Files/GitHub CLI` (PATH에 추가 필요)
+- **릴리즈 시 반드시 ZIP 첨부**: `build/TreeRU/` 폴더를 ZIP으로 만들어서 릴리즈에 업로드
+  - ZIP 만들기 전에 `build/TreeRU/app/`의 index.js, package.json, CHANGELOG.md를 최신 소스로 동기화
+  - node_modules도 `npm install --production`으로 최신화
+  - 명령: `gh release upload vX.Y.Z TreeRU-vX.Y.Z.zip`
 
 ## Git 설정
 - remote는 SSH 방식 사용: `git@github.com:treeru/treeru.git`
