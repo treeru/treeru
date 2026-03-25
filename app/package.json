@@ -1,0 +1,33 @@
+{
+  "name": "treeru",
+  "version": "1.0.0",
+  "description": "Terminal file manager with embedded shell",
+  "bin": {
+    "treeru": "./index.js"
+  },
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "pkg . --targets node18-win-x64 --output dist/treeru.exe",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "terminal",
+    "file-manager",
+    "tui",
+    "cli"
+  ],
+  "author": "TreeRU <info@treeru.com> (Seoul, South Korea)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "blessed": "^0.1.81",
+    "puppeteer-core": "^24.40.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "ssh2": "^1.17.0"
+  }
+}

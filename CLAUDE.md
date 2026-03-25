@@ -52,11 +52,17 @@ build/TreeRU/           ← ZIP으로 압축하는 루트
 - **install.bat은 반드시 CRLF 줄바꿈** — Windows cmd가 LF만 있으면 명령어 파싱 실패
   - Write 도구로 생성하면 LF가 됨 → `sed -i 's/\r$//' file && sed -i 's/$/\r/' file`로 CRLF 변환 필수
   - 또는 `xxd file | head -3`으로 `0d 0a` 확인
+- **소스 동기화 대상은 2곳** — 코드 수정은 루트 `index.js`에서만 하지만, 배포용 복사본이 2곳에 있음:
+  1. `app/index.js` — 루트 install.bat이 참조하는 로컬 설치용
+  2. `build/TreeRU/app/index.js` — ZIP 릴리즈 배포용
+  - 두 곳 모두 index.js, package.json, CHANGELOG.md를 최신으로 복사해야 함
+  - **하나라도 빠뜨리면 구버전이 설치됨**
 - ZIP 만들기 전 체크리스트:
-  1. `build/TreeRU/app/`의 index.js, package.json, CHANGELOG.md를 최신 소스로 복사
-  2. `rm -rf build/TreeRU/app/node_modules`
-  3. install.bat CRLF 확인
-  4. `powershell Compress-Archive -Path 'TreeRU\*' -DestinationPath 'TreeRU-vX.Y.Z.zip' -Force`
+  1. `cp index.js app/index.js && cp package.json app/package.json && cp CHANGELOG.md app/CHANGELOG.md`
+  2. `cp index.js build/TreeRU/app/index.js && cp package.json build/TreeRU/app/package.json && cp CHANGELOG.md build/TreeRU/app/CHANGELOG.md`
+  3. `rm -rf build/TreeRU/app/node_modules`
+  4. install.bat CRLF 확인
+  5. `powershell Compress-Archive -Path 'TreeRU\*' -DestinationPath 'TreeRU-vX.Y.Z.zip' -Force`
 
 ## Git 설정
 - remote는 SSH 방식 사용: `git@github.com:treeru/treeru.git`
