@@ -13,7 +13,14 @@ echo.
 net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo   Requesting administrator privileges...
-    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -WorkingDirectory '%~dp0' -Verb RunAs"
+    > "%TEMP%\treeru_install.bat" (
+        echo @echo off
+        echo cd /d "%~dp0"
+        echo call "%~f0"
+        echo echo.
+        echo pause
+    )
+    powershell -NoProfile -Command "Start-Process '%TEMP%\treeru_install.bat' -Verb RunAs"
     exit /b
 )
 
