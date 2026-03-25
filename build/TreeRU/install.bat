@@ -1,28 +1,30 @@
 @echo off
-setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 title TreeRU Installer
 color 0A
+
+:: ── Admin auto-elevate ──
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo   Requesting administrator privileges...
+    powershell -NoProfile -Command "Start-Process cmd.exe -ArgumentList '/k cd /d \"%~dp0\" ^& \"%~nx0\"' -Verb RunAs"
+    exit /b
+)
+
+:: Run main installer, then always pause
+call :main
+echo.
+pause
+exit /b
+
+:main
+setlocal enabledelayedexpansion
 
 echo.
 echo   TreeRU Installer v1.1
 echo   Terminal File Explorer
 echo.
-
-:: ── Admin auto-elevate ──
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo   Requesting administrator privileges...
-    > "%TEMP%\treeru_install.bat" (
-        echo @echo off
-        echo cd /d "%~dp0"
-        echo call "%~f0"
-        echo echo.
-        echo pause
-    )
-    powershell -NoProfile -Command "Start-Process '%TEMP%\treeru_install.bat' -Verb RunAs"
-    exit /b
-)
 
 :: ── Install path ──
 set "INSTALL_DIR=%ProgramFiles%\TreeRU"
@@ -230,6 +232,6 @@ echo   Open a new terminal and run: treeru
 echo   새 터미널을 열고 treeru 를 입력하세요.
 echo   또는 바탕화면의 TreeRU 아이콘을 클릭하세요.
 echo   ===============================================
-echo.
-pause
+
 endlocal
+goto :eof
