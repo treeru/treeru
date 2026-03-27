@@ -1,5 +1,5 @@
 // Force SGR mouse mode for Windows Terminal compatibility
-process.env.BLESSED_FORCE_MODES = 'SGRMOUSE=1,CELLMOTION=1,ALLMOTION=1';
+process.env.BLESSED_FORCE_MODES = 'SGRMOUSE=1,CELLMOTION=1';
 const blessed = require('blessed');
 const fs = require('fs');
 const path = require('path');
@@ -22,6 +22,13 @@ function log(...args) {
   const ts = new Date().toISOString().slice(11, 23);
   try { appendFileSync(LOG_FILE, `[${ts}] ${args.join(' ')}\n`); } catch {}
 }
+
+// ── Crash handler ────────────────────────────────────────
+const CRASH_LOG = path.join(os.tmpdir(), 'treeru_crash.log');
+process.on('uncaughtException', (err) => {
+  const ts = new Date().toISOString();
+  try { appendFileSync(CRASH_LOG, `[${ts}] ${err.stack || err}\n`); } catch {}
+});
 
 // ── Color Theme ─────────────────────────────────────────
 const C = {
@@ -387,6 +394,7 @@ function showClaudeMenu() {
   const cleanup = () => {
     menuList.removeAllListeners();
     box.destroy();
+    screen.alloc();
   };
   menuList.on('select', (item, idx) => {
     cleanup();
@@ -910,8 +918,8 @@ function inputDialog(title, defaultVal, callback) {
     style: { bg: C.header, fg: 'gray' },
     content: '{gray-fg}Enter: confirm  |  Escape: cancel{/}',
   });
-  input.on('submit', (v) => { form.destroy(); screen.render(); setTimeout(() => { dialogOpen = false; if (v) callback(v); }, 50); });
-  input.on('cancel', () => { form.destroy(); render(); setTimeout(() => { dialogOpen = false; }, 50); });
+  input.on('submit', (v) => { form.destroy(); screen.alloc(); render(); setTimeout(() => { dialogOpen = false; if (v) callback(v); }, 50); });
+  input.on('cancel', () => { form.destroy(); screen.alloc(); render(); setTimeout(() => { dialogOpen = false; }, 50); });
   input.focus();
   screen.render();
   // Move cursor to end of input text
@@ -936,9 +944,9 @@ function confirmDialog(msg, callback) {
   const h = (ch, key) => {
     if (!key) return;
     if (key.name === 'y' || key.name === 'enter' || key.name === 'return') {
-      screen.removeListener('keypress', h); box.destroy(); render(); setTimeout(() => { dialogOpen = false; callback(); }, 50);
+      screen.removeListener('keypress', h); box.destroy(); screen.alloc(); render(); setTimeout(() => { dialogOpen = false; callback(); }, 50);
     } else if (key.name === 'n' || key.name === 'escape') {
-      screen.removeListener('keypress', h); box.destroy(); render(); setTimeout(() => { dialogOpen = false; }, 50);
+      screen.removeListener('keypress', h); box.destroy(); screen.alloc(); render(); setTimeout(() => { dialogOpen = false; }, 50);
     }
   };
   screen.on('keypress', h); screen.render();
@@ -954,7 +962,7 @@ function showMessage(msg) {
     content: msg,
   });
   screen.render();
-  setTimeout(() => { m.destroy(); render(); }, 1500);
+  setTimeout(() => { m.destroy(); screen.alloc(); render(); }, 1500);
 }
 
 // ── SSH Connection Menu ─────────────────────────────────
@@ -994,6 +1002,7 @@ function showSSHMenu() {
     const info = getSSHInfo(alias);
     list.removeAllListeners();
     box.destroy();
+    screen.alloc();
     dialogOpen = false;
     log('SSH menu | selected idx:', idx, 'alias:', alias, 'host:', info.host);
     // Use nextTick to avoid Enter key bleeding through
@@ -1003,6 +1012,7 @@ function showSSHMenu() {
   list.on('cancel', () => {
     list.removeAllListeners();
     box.destroy();
+    screen.alloc();
     dialogOpen = false;
     render();
   });
@@ -1195,6 +1205,7 @@ function openViewer(fp, name) {
     hint.destroy();
     viewer.destroy();
     dialogOpen = false;
+    screen.alloc();
     render();
   };
 
@@ -1301,8 +1312,16 @@ function deleteEntry() {
       }
       return;
     }
-    try { fs.rmSync(path.join(panel.cwd, entry.name), { recursive: true, force: true }); render(); }
-    catch (e) { showMessage('Delete failed: ' + e.message); }
+    try {
+      if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+      const target = path.join(panel.cwd, entry.name);
+      if (entry.type === 'dir') {
+        fs.rmSync(target, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(target);
+      }
+      setTimeout(() => { watchDir(); render(); }, 100);
+    } catch (e) { watchDir(); showMessage('Delete failed: ' + e.message); }
   });
 }
 
@@ -1319,9 +1338,11 @@ function renameEntry() {
       return;
     }
     try {
+      if (watcher) { try { watcher.close(); } catch {} watcher = null; }
       fs.renameSync(path.join(panel.cwd, entry.name), path.join(panel.cwd, newName));
+      watchDir();
       render();
-    } catch (e) { showMessage('Rename failed: ' + e.message); }
+    } catch (e) { watchDir(); showMessage('Rename failed: ' + e.message); }
   });
 }
 
@@ -1667,16 +1688,22 @@ const PID_FILE = path.join(os.tmpdir(), '.treeru.pid');
 
 function killPreviousInstance() {
   try {
-    const oldPid = parseInt(readFileSync(PID_FILE, 'utf8').trim(), 10);
+    const lines = readFileSync(PID_FILE, 'utf8').trim().split('\n');
+    const oldPid = parseInt(lines[0], 10);
+    const oldParent = lines[1] ? parseInt(lines[1], 10) : null;
     if (oldPid && oldPid !== process.pid) {
-      try { process.kill(oldPid); } catch {}
-      log('init | killed previous instance PID:', oldPid);
+      try { require('child_process').execSync(`taskkill /PID ${oldPid} /T /F`, { stdio: 'ignore' }); } catch {}
+      if (oldParent && oldParent !== process.ppid) {
+        try { require('child_process').execSync(`taskkill /PID ${oldParent} /F`, { stdio: 'ignore' }); } catch {}
+      }
+      log('init | killed previous instance PID:', oldPid, 'parent:', oldParent);
     }
   } catch {}
 }
 
+
 function savePid() {
-  try { fs.writeFileSync(PID_FILE, String(process.pid)); } catch {}
+  try { fs.writeFileSync(PID_FILE, `${process.pid}\n${process.ppid}`); } catch {}
 }
 
 function removePid() {

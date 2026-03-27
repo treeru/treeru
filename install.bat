@@ -181,14 +181,12 @@ xcopy /Y /Q "%APP_DIR%clip_check.ps1" "%INSTALL_DIR%\" >nul
 xcopy /Y /Q "%APP_DIR%clip_save.ps1" "%INSTALL_DIR%\" >nul
 xcopy /Y /Q "%APP_DIR%treeru.ico" "%INSTALL_DIR%\" >nul
 
-:: Copy node_modules or install
-if exist "%APP_DIR%node_modules" (
-    xcopy /E /Y /Q "%APP_DIR%node_modules" "%INSTALL_DIR%\node_modules\" >nul
-) else (
-    pushd "%INSTALL_DIR%"
-    call npm install --production >nul 2>&1
-    popd
-)
+:: Always fresh install dependencies
+if exist "%INSTALL_DIR%\node_modules" rmdir /S /Q "%INSTALL_DIR%\node_modules" >nul 2>&1
+pushd "%INSTALL_DIR%"
+echo       Installing dependencies...
+call npm install --production 2>nul
+popd
 
 :: Create launcher with UTF-8 codepage
 (
