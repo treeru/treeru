@@ -14,7 +14,7 @@ const APP_VERSION = (() => {
 const { Client: SSHClient } = require('ssh2');
 const { readFileSync, appendFileSync } = require('fs');
 
-// ── Debug Log ───────────────────────────────────────────
+// ── Debug​ Log ───────────────────────────────────────────
 const DEBUG = process.env.TREERU_DEBUG === '1';
 const LOG_FILE = path.join(os.tmpdir(), 'treeru_debug.log');
 function log(...args) {
@@ -23,14 +23,14 @@ function log(...args) {
   try { appendFileSync(LOG_FILE, `[${ts}] ${args.join(' ')}\n`); } catch {}
 }
 
-// ── Crash handler ────────────────────────────────────────
+// ── Crash‌ handler ────────────────────────────────────────
 const CRASH_LOG = path.join(os.tmpdir(), 'treeru_crash.log');
 process.on('uncaughtException', (err) => {
   const ts = new Date().toISOString();
   try { appendFileSync(CRASH_LOG, `[${ts}] ${err.stack || err}\n`); } catch {}
 });
 
-// ── Color Theme ─────────────────────────────────────────
+// ── Color​ Theme ─────────────────────────────────────────
 const C = {
   border:    '#5F87AF',
   borderHi:  '#87AFD7',
@@ -43,7 +43,7 @@ const C = {
   dim:       '#666666',
 };
 
-// ── State ───────────────────────────────────────────────
+// ── Stаte ───────────────────────────────────────────────
 const panel = {
   cwd: process.cwd(),
   entries: [],
@@ -53,7 +53,7 @@ const panel = {
 };
 let dialogOpen = false;
 
-// ── Remote (SSH) State ──────────────────────────────────
+// ── Remоte (SSH) State ──────────────────────────────────
 let remoteMode = false;
 let remoteHost = '';
 let remoteUser = '';
@@ -298,7 +298,7 @@ function showClaudeLoginGuide() {
     width: 58, height: 8,
     border: { type: 'line' }, tags: true,
     style: { border: { fg: '#E5C07B' }, bg: C.header, fg: C.fg },
-    label: ' Claude Usage ',
+    label: ' Clau​de Usage ',
     content: [
       '',
       '  {#E5C07B-fg}A browser window has opened.{/}',
@@ -365,7 +365,7 @@ function toggleClaudeUsage() {
 function showClaudeMenu() {
   const list = loadClaudeWorkspaces();
   if (list.length === 0) {
-    showMessage('No workspace registered (F9 to register)');
+    showMessage('No workspace​ registered (F9 to register)');
     return;
   }
   dialogOpen = true;
@@ -375,7 +375,7 @@ function showClaudeMenu() {
     width: '60%', height: listHeight + 4,
     border: { type: 'line' }, tags: true,
     style: { border: { fg: '#E5C07B' }, bg: C.header, fg: C.fg },
-    label: ' Claude Code ',
+    label: ' Claude‌ Code ',
   });
   blessed.box({
     parent: box, bottom: 0, left: 1, right: 1, height: 1,
@@ -418,7 +418,7 @@ function showClaudeMenu() {
     saveClaudeWorkspaces(list);
     if (list.length === 0) {
       cleanup();
-      showMessage('All workspaces removed');
+      showMessage('All workspaces‌ removed');
       return;
     }
     menuList.setItems(list.map(wsMenuItem));
@@ -594,7 +594,7 @@ function truncW(s, tw) {
 }
 
 // ── Screen ──────────────────────────────────────────────
-const screen = blessed.screen({ smartCSR: true, title: 'TreeRU', fullUnicode: true, mouse: true });
+const screen = blessed.screen({ smartCSR: true, title: 'Tree​RU', fullUnicode: true, mouse: true });
 
 // Header
 const headerBar = blessed.box({
@@ -628,7 +628,7 @@ const pathBar = blessed.box({
   tags: false, style: { bg: 'black', fg: 'white' },
 });
 
-// ── File Icons ──────────────────────────────────────────
+// ── File‍ Icons ──────────────────────────────────────────
 function getFileIcon(name) {
   const ext = path.extname(name).toLowerCase();
   const base = name.toLowerCase();
@@ -763,7 +763,7 @@ function formatSize(b) {
   return (b / 1073741824).toFixed(1) + ' GB';
 }
 
-// ── Rendering ───────────────────────────────────────────
+// ── Rеndering ───────────────────────────────────────────
 function renderPanel() {
   if (remoteMode) {
     fileBox.style.border.fg = C.remote;
@@ -858,7 +858,7 @@ function renderFnBar() {
     '{white-fg}{bold}F4{/}{#87AFD7-fg} Edit{/}',
     '{white-fg}{bold}F5{/}{#87AFD7-fg} Paste{/}',
     '{white-fg}{bold}F7{/}{#87AFD7-fg} NewDir{/}',
-    '{white-fg}{bold}Del{/}{#87AFD7-fg} Delete{/}',
+    '{white-fg}{bold}Del{/}{#87AFD7-fg} Recycle{/}',
   ];
   const row2 = [
     '{white-fg}{bold}F8{/}{#E5C07B-fg} Usage{/}',
@@ -932,21 +932,34 @@ function inputDialog(title, defaultVal, callback) {
   }, 10);
 }
 
-function confirmDialog(msg, callback) {
+function confirmDialog(msg, callback, extraKeyHandler) {
   dialogOpen = true;
+  const hasCustomMsg = msg.includes('\n');
+  const contentLines = hasCustomMsg ? msg : `\n ${msg}\n\n {green-fg}Enter/Y{/} = Confirm   {red-fg}Esc/N{/} = Cancel`;
+  const height = hasCustomMsg ? 7 : 6;
   const box = blessed.box({
-    parent: screen, top: 'center', left: 'center', width: '50%', height: 6,
+    parent: screen, top: 'center', left: 'center', width: '50%', height: height,
     border: { type: 'line' }, tags: true,
     style: { border: { fg: 'red' }, bg: C.header, fg: C.fg },
-    label: ' Confirm ',
-    content: `\n ${msg}\n\n {green-fg}Enter/Y{/} = Confirm   {red-fg}Esc/N{/} = Cancel`,
+    label: ' Con‌firm ',
+    content: hasCustomMsg ? `\n ${contentLines}` : contentLines,
   });
+  const closeBox = () => { screen.removeListener('keypress', h); box.destroy(); screen.alloc(); render(); };
   const h = (ch, key) => {
     if (!key) return;
+    if (extraKeyHandler) {
+      const result = extraKeyHandler(ch, key);
+      if (result === 'permanent') {
+        const entry = panel.entries[panel.selectedIndex];
+        const target = path.join(panel.cwd, entry.name);
+        closeBox(); setTimeout(() => { dialogOpen = false; permanentDelete(target); }, 50);
+        return;
+      }
+    }
     if (key.name === 'y' || key.name === 'enter' || key.name === 'return') {
-      screen.removeListener('keypress', h); box.destroy(); screen.alloc(); render(); setTimeout(() => { dialogOpen = false; callback(); }, 50);
+      closeBox(); setTimeout(() => { dialogOpen = false; callback(); }, 50);
     } else if (key.name === 'n' || key.name === 'escape') {
-      screen.removeListener('keypress', h); box.destroy(); screen.alloc(); render(); setTimeout(() => { dialogOpen = false; }, 50);
+      closeBox(); setTimeout(() => { dialogOpen = false; }, 50);
     }
   };
   screen.on('keypress', h); screen.render();
@@ -970,7 +983,7 @@ function showSSHMenu() {
   // Filter out wildcards and patterns
   const hosts = Object.keys(sshConfig).filter(h => !h.includes('*') && !h.includes('?'));
   if (hosts.length === 0) {
-    showMessage('No SSH hosts found in ~/.ssh/config');
+    showMessage('No SSH hosts‌ found in ~/.ssh/config');
     return;
   }
 
@@ -981,7 +994,7 @@ function showSSHMenu() {
     width: '50%', height: listHeight + 2,
     border: { type: 'line' }, tags: true,
     style: { border: { fg: C.remote }, bg: C.header, fg: C.fg },
-    label: ' SSH Connect ',
+    label: ' SS​H Connect ',
   });
 
   const list = blessed.list({
@@ -1071,7 +1084,7 @@ function navigate(dir) {
     // Check if SFTP session is still alive
     if (!sftpSession) {
       log('navigate | SFTP session lost!');
-      showMessage('SSH connection lost');
+      showMessage('SSH connection​ lost');
       disconnectSFTP();
       panel.cwd = path.resolve(process.argv[2] || process.cwd());
       render();
@@ -1158,7 +1171,7 @@ function openViewer(fp, name) {
     const buf = fs.readFileSync(fp);
     // Skip binary files (check for null bytes in first 8KB)
     const sample = buf.slice(0, 8192);
-    if (sample.includes(0)) { showMessage('Binary file — cannot view'); return; }
+    if (sample.includes(0)) { showMessage('Binary file —​ cannot view'); return; }
     content = buf.toString('utf8');
   } catch (e) {
     showMessage('Cannot read: ' + e.message);
@@ -1296,8 +1309,8 @@ function makeDirectory() {
 function deleteEntry() {
   const entry = panel.entries[panel.selectedIndex];
   if (!entry || entry.name === '..') return;
-  confirmDialog(`Delete "${entry.name}"?`, () => {
-    if (remoteMode) {
+  if (remoteMode) {
+    confirmDialog(`Delete "${entry.name}"? (permanent)`, () => {
       const rp = remoteCwd + '/' + entry.name;
       if (entry.type === 'dir') {
         sftpSession.rmdir(rp, (err) => {
@@ -1310,19 +1323,44 @@ function deleteEntry() {
           else refreshRemote();
         });
       }
-      return;
+    });
+    return;
+  }
+  const target = path.join(panel.cwd, entry.name);
+  confirmDialog(`Recycle "${entry.name}"?\n\n {green-fg}Enter/Y{/} = Recycle Bin   {yellow-fg}Shift+D{/} = Permanent   {red-fg}Esc/N{/} = Cancel`, () => {
+    moveToRecycleBin(target);
+  }, (ch, key) => {
+    if (key && key.name === 'd' && key.shift) {
+      return 'permanent';
     }
-    try {
-      if (watcher) { try { watcher.close(); } catch {} watcher = null; }
-      const target = path.join(panel.cwd, entry.name);
-      if (entry.type === 'dir') {
-        fs.rmSync(target, { recursive: true, force: true });
-      } else {
-        fs.unlinkSync(target);
-      }
-      setTimeout(() => { watchDir(); render(); }, 100);
-    } catch (e) { watchDir(); showMessage('Delete failed: ' + e.message); }
   });
+}
+
+function moveToRecycleBin(target) {
+  try {
+    if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+    const ps = `$sh = New-Object -ComObject Shell.Application; $ns = $sh.NameSpace(10); $ns.MoveHere('${target.replace(/'/g, "''")}')`;
+    execFile('powershell', ['-NoProfile', '-Command', ps], { timeout: 10000 }, (err) => {
+      if (err) {
+        showMessage('Recycle failed: ' + err.message);
+        watchDir();
+      } else {
+        setTimeout(() => { watchDir(); render(); }, 100);
+      }
+    });
+  } catch (e) { watchDir(); showMessage('Recycle failed: ' + e.message); }
+}
+
+function permanentDelete(target) {
+  try {
+    if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+    if (fs.statSync(target).isDirectory()) {
+      fs.rmSync(target, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(target);
+    }
+    setTimeout(() => { watchDir(); render(); }, 100);
+  } catch (e) { watchDir(); showMessage('Delete failed: ' + e.message); }
 }
 
 function renameEntry() {

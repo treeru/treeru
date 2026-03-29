@@ -145,7 +145,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `F4` | Edit in Notepad |
 | `F5` | Paste files from clipboard |
 | `F7` | Create new folder |
-| `Del` | Delete |
+| `Del` | Recycle (Shift+D for permanent delete) |
 | `F8` | Refresh Claude usage (shown in header) |
 | `F9` | Register current folder as Claude Code workspace |
 | `F10` | SSH connect / disconnect |
@@ -191,4 +191,4 @@ When you copy a screenshot to the clipboard, TreeRU automatically detects it and
 
 ## License
 
-MIT
+MIT with [Commons Clause](https://commonsclause.com/) — free to use, but cannot be sold or redistributed as a commercial product. See [LICENSE](LICENSE) for details.

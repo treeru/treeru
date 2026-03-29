@@ -18,7 +18,7 @@
     "cli"
   ],
   "author": "TreeRU <info@treeru.com> (Seoul, South Korea)",
-  "license": "MIT",
+  "license": "MIT WITH Commons-Clause",
   "engines": {
     "node": ">=18.0.0"
   },
