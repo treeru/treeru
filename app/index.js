@@ -637,9 +637,11 @@ function renderTabBar() {
     tabHits.push({ x0: x, x1: x + w - 1, idx: i });
     const remote = s.remoteMode || s.pendingRemote;
     if (i === activeIdx) {
-      // Active tab: dark text on a bright solid fill (amber=local, cyan=remote) — high contrast
-      const bg = remote ? '#56B6C2' : '#E5C07B';
-      out += `{#101018-fg}{${bg}-bg}{bold}${label}{/}`;
+      // Active tab: WHITE bold text on a deep solid fill (teal=remote, amber=local).
+      // Deep bg (not bright) so white stays high-contrast; bold-black on a bright bg
+      // gets brightened to gray by some terminals, so we avoid dark text entirely.
+      const bg = remote ? '#1F7A86' : '#9A6E14';
+      out += `{white-fg}{${bg}-bg}{bold}${label}{/}`;
     } else {
       // Inactive tab: light text on a dark chip so each tab reads as a distinct button
       const fg = remote ? '#7FD3DE' : '#C8C8C8';
@@ -649,7 +651,7 @@ function renderTabBar() {
     x += w + 1;
   });
   tabHits.push({ x0: x, x1: x + 4, idx: 'new' });
-  out += '{black-fg}{#E5C07B-bg}{bold} + {/}';
+  out += '{white-fg}{#9A6E14-bg}{bold} + {/}';
   tabBar.setContent(out);
 }
 
