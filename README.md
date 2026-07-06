@@ -58,6 +58,8 @@ Jump back to any folder — local or deep inside an SSH server — in two keystr
 - **Del** removes a bookmark; add it again anytime (no edit needed)
 - Stored in `~/.treeru_bookmarks.json`
 
+You can also open a bookmark **as a new tab**: press **T** (or click **+**), choose **★ Bookmarks ▸**, then pick one — it opens in a fresh tab (SSH bookmarks connect automatically).
+
 ## Features
 
 - **Tabs / sessions** — multiple local & SSH workspaces in one window, restored across restarts (see above)
