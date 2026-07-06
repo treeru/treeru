@@ -506,13 +506,20 @@ function renderTabBar() {
     const w = strWidth(label);
     tabHits.push({ x0: x, x1: x + w - 1, idx: i });
     const remote = s.remoteMode || s.pendingRemote;
-    if (i === activeIdx) out += `{black-fg}{${remote ? '#56B6C2' : '#87AFD7'}-bg}{bold}${label}{/}`;
-    else out += `{${remote ? '#56B6C2' : '#87AFD7'}-fg}${label}{/}`;
-    out += '{#444444-fg}│{/}';
+    if (i === activeIdx) {
+      // Active tab: dark text on a bright solid fill (amber=local, cyan=remote) — high contrast
+      const bg = remote ? '#56B6C2' : '#E5C07B';
+      out += `{#101018-fg}{${bg}-bg}{bold}${label}{/}`;
+    } else {
+      // Inactive tab: light text on a dark chip so each tab reads as a distinct button
+      const fg = remote ? '#7FD3DE' : '#C8C8C8';
+      out += `{${fg}-fg}{#2A2A3E-bg}${label}{/}`;
+    }
+    out += '{#10101E-bg} {/}'; // gap between tabs (matches bar background)
     x += w + 1;
   });
-  tabHits.push({ x0: x, x1: x + 2, idx: 'new' });
-  out += '{#E5C07B-fg}{bold} + {/}';
+  tabHits.push({ x0: x, x1: x + 4, idx: 'new' });
+  out += '{black-fg}{#E5C07B-bg}{bold} + {/}';
   tabBar.setContent(out);
 }
 
