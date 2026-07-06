@@ -224,7 +224,7 @@ function showClaudeMenu() {
     tags: false, mouse: true, keys: true,
     style: {
       fg: 'white',
-      selected: { fg: 'black', bg: '#E5C07B' },
+      selected: { fg: 'white', bg: '#1F7A86', bold: true },
     },
     items: list.map(wsMenuItem),
   });
@@ -283,7 +283,7 @@ function bmMenuItem(bm) {
     : (path.basename(bm.path) || bm.path);
   const tag = bm.type === 'remote' ? `${bm.host}:${base}` : base;
   const full = bm.type === 'remote' ? `${bm.host}:${bm.path}` : bm.path;
-  return `  ★ ${tag}   {#666666-fg}(${full}){/}`;
+  return `  ★ ${tag}   {#9BA3B4-fg}(${full}){/}`;
 }
 
 function addCurrentBookmark(silent) {
@@ -340,7 +340,7 @@ function showBookmarks() {
   dialogOpen = true;
   const build = () => {
     const list = loadBookmarks();
-    const items = [`  {#E5C07B-fg}➕ Add current folder{/}   {#666666-fg}(${bmMenuItem(bmOf(cur())).replace(/^\s*★\s*/, '').trim()}){/}`,
+    const items = [`  {#E5C07B-fg}➕ Add current folder{/}   {#9BA3B4-fg}(${bmMenuItem(bmOf(cur())).replace(/^\s*★\s*/, '').trim()}){/}`,
       ...list.map(bmMenuItem)];
     return { list, items };
   };
@@ -361,7 +361,7 @@ function showBookmarks() {
   const menuList = blessed.list({
     parent: box, top: 0, left: 1, right: 1, height: listHeight,
     tags: true, mouse: true, keys: true,
-    style: { fg: 'white', selected: { fg: 'black', bg: '#E5C07B' } },
+    style: { fg: 'white', selected: { fg: 'white', bg: '#1F7A86', bold: true } },
     items,
   });
   const cleanup = () => { menuList.removeAllListeners(); box.destroy(); screen.alloc(); };
@@ -713,7 +713,7 @@ function pickerMenu(title, rows, opts) {
   const list = blessed.list({
     parent: box, top: 0, left: 1, right: 1, height: listHeight,
     tags: true, mouse: true, keys: true,
-    style: { fg: 'white', selected: { fg: 'black', bg: '#E5C07B' } },
+    style: { fg: 'white', selected: { fg: 'white', bg: '#1F7A86', bold: true } },
     items: rows.map(r => r.label),
   });
   const close = () => { list.removeAllListeners(); box.destroy(); screen.alloc(); };
@@ -755,18 +755,18 @@ function showNewTabDialog() {
   const hereLabel = base.remoteMode ? `${base.remoteHost}:${base.remoteCwd}` : base.cwd;
   const bmCount = loadBookmarks().length;
   const rows = [
-    { label: `  📁 Duplicate current tab  {#666666-fg}(${hereLabel}){/}`, onSelect: () => {
+    { label: `  📁 Duplicate current tab  {#9BA3B4-fg}(${hereLabel}){/}`, onSelect: () => {
       if (base.remoteMode) {
         const s = newSession(os.homedir());
         s.pendingRemote = { host: base.remoteHost, path: base.remoteCwd };
         addSession(s); activatePendingRemote();
       } else addSession(newSession(base.cwd));
     } },
-    { label: `  🏠 Local home  {#666666-fg}(${os.homedir()}){/}`, onSelect: () => addSession(newSession(os.homedir())) },
-    { label: `  ★ Bookmarks ▸  {#666666-fg}(${bmCount}){/}`, onSelect: () => showBookmarkFolder() },
+    { label: `  🏠 Local home  {#9BA3B4-fg}(${os.homedir()}){/}`, onSelect: () => addSession(newSession(os.homedir())) },
+    { label: `  ★ Bookmarks ▸  {#9BA3B4-fg}(${bmCount}){/}`, onSelect: () => showBookmarkFolder() },
     ...hosts.map(h => {
       const info = getSSHInfo(h);
-      return { label: `  🔗 ${h}  {#666666-fg}(${info.username}@${info.host}){/}`, onSelect: () => {
+      return { label: `  🔗 ${h}  {#9BA3B4-fg}(${info.username}@${info.host}){/}`, onSelect: () => {
         const s = newSession(os.homedir());
         s.pendingRemote = { host: h, path: '.' };
         addSession(s); activatePendingRemote();
