@@ -48,6 +48,16 @@ Run multiple working folders — local and SSH — inside one TreeRU window, zel
 - **Sessions are restored on restart**: your tabs (including SSH ones, which reconnect when you switch to them) come back exactly as you left them. Stored in `~/.treeru_sessions.json`
 - Screenshots save into the **active tab's folder**
 
+## Bookmarks (F8)
+
+Jump back to any folder — local or deep inside an SSH server — in two keystrokes.
+
+- Press **F8** anywhere to open the bookmark list
+- The top row **➕ Add current folder** saves wherever you are now (for SSH tabs it remembers `host:/full/path`)
+- Arrow keys + **Enter** open a bookmark **in the current tab** — an SSH bookmark reconnects and drops you straight into that folder
+- **Del** removes a bookmark; add it again anytime (no edit needed)
+- Stored in `~/.treeru_bookmarks.json`
+
 ## Features
 
 - **Tabs / sessions** — multiple local & SSH workspaces in one window, restored across restarts (see above)
@@ -145,6 +155,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `W` | Close current tab |
 | `Tab` / `Shift+Tab` | Next / previous tab |
 | `Alt+1`–`9` | Jump to tab N |
+| `F8` | Bookmarks (add current / open / delete) |
 | `F6` / `Alt+Shift+C` | Copy path(s) to clipboard |
 | `F2` | Rename |
 | `F4` | Edit in Notepad |

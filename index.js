@@ -266,6 +266,136 @@ function showClaudeMenu() {
   screen.render();
 }
 
+// ── Bookmarks (F8) ──────────────────────────────────────
+const BOOKMARKS_FILE = path.join(os.homedir(), '.treeru_bookmarks.json');
+function loadBookmarks() { try { const d = JSON.parse(readFileSync(BOOKMARKS_FILE, 'utf8')); return Array.isArray(d) ? d : []; } catch { return []; } }
+function saveBookmarks(list) { try { fs.writeFileSync(BOOKMARKS_FILE, JSON.stringify(list, null, 2)); } catch {} }
+
+function bmOf(ses) {
+  return ses.remoteMode
+    ? { type: 'remote', host: ses.remoteHost, path: ses.remoteCwd }
+    : { type: 'local', path: ses.cwd };
+}
+function bmSame(a, b) { return a.type === b.type && a.path === b.path && (a.host || '') === (b.host || ''); }
+function bmMenuItem(bm) {
+  const base = bm.type === 'remote'
+    ? ((bm.path || '/').split('/').filter(Boolean).pop() || '/')
+    : (path.basename(bm.path) || bm.path);
+  const tag = bm.type === 'remote' ? `${bm.host}:${base}` : base;
+  const full = bm.type === 'remote' ? `${bm.host}:${bm.path}` : bm.path;
+  return `  ★ ${tag}   {#666666-fg}(${full}){/}`;
+}
+
+function addCurrentBookmark(silent) {
+  const bm = bmOf(cur());
+  const list = loadBookmarks();
+  if (list.some(b => bmSame(b, bm))) { if (!silent) showMessage('Already bookmarked'); return false; }
+  list.push(bm);
+  saveBookmarks(list);
+  if (!silent) showMessage(`★ Added: ${bm.type === 'remote' ? bm.host + ':' : ''}${path.basename(bm.path) || bm.path}`);
+  return true;
+}
+
+// Open a bookmark in the CURRENT tab (like following a browser bookmark)
+function openBookmark(bm) {
+  const ses = cur();
+  if (bm.type === 'local') {
+    if (ses.remoteMode) disconnectSFTP(ses);
+    try {
+      fs.accessSync(bm.path, fs.constants.R_OK);
+      ses.cwd = path.resolve(bm.path);
+      ses.selectedIndex = 0; ses.scrollOffset = 0; ses.marked.clear();
+      watchDir(); saveSessions(); render();
+    } catch { showMessage('Path not found: ' + bm.path); }
+    return;
+  }
+  // remote: (re)connect this tab to the bookmarked host + path
+  disconnectSFTP(ses);
+  ses._connecting = true;
+  render();
+  showMessage(`Connecting to ${bm.host}...`);
+  connectSFTP(ses, bm.host, (err) => {
+    ses._connecting = false;
+    if (err) {
+      ses.cwd = os.homedir();
+      showMessage(`SSH failed: ${err.message}`);
+      saveSessions(); if (ses === cur()) render();
+      return;
+    }
+    ses.remoteMode = true;
+    ses.remoteCwd = bm.path || '.';
+    refreshRemote(ses, (e2) => {
+      if (e2) { // bookmarked path is gone — fall back to home directory
+        ses.sftpSession.realpath('.', (e3, hp) => {
+          ses.remoteCwd = e3 ? '/home/' + ses.remoteUser : hp;
+          refreshRemote(ses, () => saveSessions());
+          showMessage('Bookmarked path missing — opened home');
+        });
+      } else saveSessions();
+    });
+  });
+}
+
+function showBookmarks() {
+  dialogOpen = true;
+  const build = () => {
+    const list = loadBookmarks();
+    const items = [`  {#E5C07B-fg}➕ Add current folder{/}   {#666666-fg}(${bmMenuItem(bmOf(cur())).replace(/^\s*★\s*/, '').trim()}){/}`,
+      ...list.map(bmMenuItem)];
+    return { list, items };
+  };
+  let { list, items } = build();
+  const listHeight = Math.min(items.length + 1, screen.height - 6);
+  const box = blessed.box({
+    parent: screen, top: 'center', left: 'center',
+    width: '70%', height: listHeight + 4,
+    border: { type: 'line' }, tags: true,
+    style: { border: { fg: '#E5C07B' }, bg: C.header, fg: C.fg },
+    label: ' ★ Bookmarks ',
+  });
+  blessed.box({
+    parent: box, bottom: 0, left: 1, right: 1, height: 1,
+    tags: true, style: { bg: C.header },
+    content: '{#666666-fg}Enter: Open   Del: Remove   Esc: Cancel{/}',
+  });
+  const menuList = blessed.list({
+    parent: box, top: 0, left: 1, right: 1, height: listHeight,
+    tags: true, mouse: true, keys: true,
+    style: { fg: 'white', selected: { fg: 'black', bg: '#E5C07B' } },
+    items,
+  });
+  const cleanup = () => { menuList.removeAllListeners(); box.destroy(); screen.alloc(); };
+  menuList.on('select', (item, idx) => {
+    if (idx === 0) { // "Add current folder"
+      const added = addCurrentBookmark(true);
+      const rebuilt = build(); list = rebuilt.list;
+      menuList.setItems(rebuilt.items);
+      menuList.select(added ? rebuilt.items.length - 1 : 0);
+      showMessage(added ? '★ Added' : 'Already bookmarked');
+      screen.render();
+      return;
+    }
+    cleanup(); render();
+    setTimeout(() => { dialogOpen = false; openBookmark(list[idx - 1]); }, 50);
+  });
+  const close = () => { cleanup(); render(); setTimeout(() => { dialogOpen = false; }, 50); };
+  menuList.on('cancel', close);
+  menuList.key('escape', close);
+  menuList.key(['left', 'right'], () => {});
+  menuList.key('delete', () => {
+    const idx = menuList.selected;
+    if (idx === 0) return; // can't delete the add-row
+    list.splice(idx - 1, 1);
+    saveBookmarks(list);
+    const rebuilt = build(); list = rebuilt.list;
+    menuList.setItems(rebuilt.items);
+    menuList.select(Math.min(idx, rebuilt.items.length - 1));
+    screen.render();
+  });
+  menuList.focus();
+  screen.render();
+}
+
 // ── SSH Config Parser ───────────────────────────────────
 function parseSSHConfig() {
   const hosts = {};
@@ -845,6 +975,7 @@ function renderFnBar() {
     '{white-fg}{bold}T{/}{#E5C07B-fg} NewTab{/}',
     '{white-fg}{bold}W{/}{#E5C07B-fg} CloseTab{/}',
     '{white-fg}{bold}Tab{/}{#E5C07B-fg} Switch{/}',
+    '{white-fg}{bold}F8{/}{#E5C07B-fg} Bookmark{/}',
     '{white-fg}{bold}F9{/}{#E5C07B-fg} Claude+{/}',
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
     '{white-fg}{bold}F12{/}{#E5C07B-fg} Claude{/}',
@@ -1903,6 +2034,9 @@ screen.on('keypress', (ch, key) => {
       break;
     case 'd':
       downloadSelected();
+      break;
+    case 'f8':
+      showBookmarks();
       break;
     case 'f9':
       registerClaudeWorkspace();
