@@ -150,6 +150,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `F4` | Edit in Notepad |
 | `F5` | Paste files from clipboard |
 | `F7` | Create new folder |
+| `D` | Download (remote → ~/Downloads + clipboard) / copy files to clipboard (local) |
 | `Del` | Move to Recycle Bin — applies to all selected files (Shift+D for permanent delete) |
 | `F9` | Register current folder as Claude Code workspace |
 | `F10` | SSH connect / disconnect |
@@ -176,6 +177,16 @@ Select one to browse remote files via SFTP.
 > SSH key authentication must be configured. Password authentication is not supported.
 
 Host keys are pinned on first connect (trust-on-first-use) in `~/.treeru_hosts.json`. If a server's host key changes, the connection is refused — remove the entry from that file if the change was intentional.
+
+## File Transfer
+
+**Download (`D`)**
+- On an **SSH tab**: downloads the selected file(s) into your local `~/Downloads` folder, and also places them on the clipboard **as files** — paste with `Ctrl+V` in Explorer, or `F5` in another (local or remote) tab. Folders are skipped.
+- On a **local tab**: puts the selected file(s) on the clipboard as files (a stand-in for "drag out to Explorer").
+
+**Upload**
+- `F5` pastes files you copied in Explorer (`Ctrl+C`) into the current tab — a local copy, or an SFTP upload if the tab is a remote session.
+- **Drag & drop** (experimental): drag a file from Explorer onto the TreeRU window and confirm — it's copied/uploaded into the current tab. This works because Windows Terminal converts a dropped file into its path; dragging *out* of the terminal is not possible, so use `D` (clipboard-as-files) for that direction.
 
 ## Clipboard Auto-Paste
 

@@ -831,6 +831,7 @@ function renderFnBar() {
     '{white-fg}{bold}F4{/}{#87AFD7-fg} Edit{/}',
     '{white-fg}{bold}F5{/}{#87AFD7-fg} Paste{/}',
     '{white-fg}{bold}F7{/}{#87AFD7-fg} NewDir{/}',
+    '{white-fg}{bold}D{/}{#87AFD7-fg} Download{/}',
     '{white-fg}{bold}Del{/}{#87AFD7-fg} Recycle{/}',
   ];
   const row2 = [
@@ -1295,6 +1296,103 @@ function copyTextToClipboard(text, cb) {
   }
 }
 
+// Put actual files (not text) on the Windows clipboard — paste with Ctrl+V in Explorer or F5 in another tab
+function copyFilesToClipboard(paths, cb) {
+  if (!isWindows) { cb(new Error('unsupported')); return; }
+  const list = paths.map(p => `'${p.replace(/'/g, "''")}'`).join(',');
+  execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Path ${list}`], (err) => cb(err));
+}
+
+function uniquePath(dir, name) {
+  let p = path.join(dir, name);
+  if (!fs.existsSync(p)) return p;
+  const ext = path.extname(name), base = path.basename(name, ext);
+  for (let i = 1; ; i++) {
+    p = path.join(dir, `${base} (${i})${ext}`);
+    if (!fs.existsSync(p)) return p;
+  }
+}
+
+// D key — remote tab: download selection to ~/Downloads (+ clipboard as files);
+//         local tab: put selection on the clipboard as files (folders OK)
+function downloadSelected() {
+  const ses = cur();
+  const names = [];
+  if (ses.marked.size > 0) {
+    ses.entries.forEach(e => { if (ses.marked.has(e.name) && e.name !== '..') names.push(e.name); });
+  } else {
+    const entry = ses.entries[ses.selectedIndex];
+    if (!entry || entry.name === '..') return;
+    names.push(entry.name);
+  }
+  if (names.length === 0) return;
+
+  if (!ses.remoteMode) {
+    const paths = names.map(n => path.join(ses.cwd, n));
+    copyFilesToClipboard(paths, (err) => {
+      showMessage(err ? 'Copy failed' : `📋 ${paths.length} file(s) on clipboard — Ctrl+V in Explorer / F5 in another tab`);
+    });
+    return;
+  }
+
+  const files = names.filter(n => { const e = ses.entries.find(x => x.name === n); return e && e.type !== 'dir'; });
+  const skipped = names.length - files.length;
+  if (files.length === 0) { showMessage('Folders cannot be downloaded — select files'); return; }
+  const destDir = path.join(os.homedir(), 'Downloads');
+  try { fs.mkdirSync(destDir, { recursive: true }); } catch {}
+  showMessage(`⬇ Downloading ${files.length} file(s)...`);
+
+  const saved = [], errs = [];
+  let i = 0;
+  const next = () => {
+    if (i >= files.length) {
+      ses.marked.clear();
+      const finish = () => {
+        showMessage(`⬇ ${saved.length} file(s) → Downloads` +
+          (skipped ? `, ${skipped} folder(s) skipped` : '') +
+          (errs.length ? `, ${errs.length} failed` : '') +
+          (saved.length && isWindows ? ' (clipboard ready)' : ''));
+        if (ses === cur()) render();
+      };
+      if (saved.length && isWindows) copyFilesToClipboard(saved, finish);
+      else finish();
+      return;
+    }
+    const name = files[i++];
+    if (!ses.sftpSession) { errs.push('No SFTP session'); next(); return; }
+    const local = uniquePath(destDir, name);
+    ses.sftpSession.fastGet(ses.remoteCwd + '/' + name, local, (err) => {
+      if (err) errs.push(err.message); else saved.push(local);
+      next();
+    });
+  };
+  next();
+}
+
+// Shared by F5 clipboard paste and drag&drop: copy local files into the current tab
+function transferFilesToCurrent(files) {
+  const ses = cur();
+  let done = 0, failed = 0;
+  files.forEach(src => {
+    const name = path.basename(src);
+    if (ses.remoteMode && ses.sftpSession) {
+      ses.sftpSession.fastPut(src, ses.remoteCwd + '/' + name, (ue) => {
+        if (ue) failed++; else done++;
+        if (done + failed === files.length) {
+          showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : '') + ` → ${ses.remoteHost}`);
+          refreshRemote(ses);
+        }
+      });
+    } else {
+      try { fs.copyFileSync(src, path.join(ses.cwd, name)); done++; } catch { failed++; }
+      if (done + failed === files.length) {
+        showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : ''));
+        render();
+      }
+    }
+  });
+}
+
 function hasBadPath(name) {
   return !name || name.includes('..') || name.includes('/') || name.includes('\\');
 }
@@ -1501,33 +1599,56 @@ function saveClipboardImage() {
 
 // ── Clipboard File Paste ─────────────────────────────────
 function pasteFilesFromClipboard() {
-  const ses = cur();
   const psCmd = '$f = Get-Clipboard -Format FileDropList; if ($f) { $f.FullName -join "`n" } else { "" }';
   execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCmd], (err, stdout) => {
     if (err || !stdout.trim()) { showMessage('No files in clipboard'); return; }
     const files = stdout.trim().split('\n').map(f => f.trim()).filter(Boolean);
-    let done = 0, failed = 0;
-    files.forEach(src => {
-      const name = path.basename(src);
-      if (ses.remoteMode && ses.sftpSession) {
-        const rp = ses.remoteCwd + '/' + name;
-        ses.sftpSession.fastPut(src, rp, (ue) => {
-          if (ue) failed++; else done++;
-          if (done + failed === files.length) {
-            showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : '') + ` → ${ses.remoteHost}`);
-            refreshRemote(ses);
-          }
-        });
-      } else {
-        const dest = path.join(ses.cwd, name);
-        try { fs.copyFileSync(src, dest); done++; } catch { failed++; }
-        if (done + failed === files.length) {
-          showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : ''));
-          render();
-        }
-      }
-    });
+    transferFilesToCurrent(files);
   });
+}
+
+// ── Drag & Drop (experimental) ──────────────────────────
+// Dropping a file onto the terminal makes Windows Terminal "type" its quoted
+// path as a rapid character burst. Detect the burst, validate the paths, and
+// offer to copy the files into the current tab (local copy or SFTP upload).
+let dropBuf = '';
+let dropTimer = null;
+let lastPrintCh = '';
+let lastPrintTs = 0;
+
+function evalDrop() {
+  const text = dropBuf;
+  dropBuf = '';
+  if (dropTimer) { clearTimeout(dropTimer); dropTimer = null; }
+  const raw = text.match(/"[^"]+"|\S+/g) || [];
+  const files = raw.map(s => s.replace(/^"+|"+$/g, ''))
+    .filter(p => /^[A-Za-z]:[\\/]/.test(p) || p.startsWith('\\\\') || p.startsWith('/'))
+    .filter(p => { try { return fs.statSync(p).isFile(); } catch { return false; } });
+  if (files.length === 0) return; // not a file drop — discard the burst
+  confirmDialog(`Copy ${files.length} dropped file(s) into this tab?`, () => transferFilesToCurrent(files));
+}
+
+// Returns true when the char was consumed as part of a drop burst
+function handleDropChar(ch) {
+  if (!ch || ch.length !== 1 || ch < ' ') return false;
+  const now = Date.now();
+  if (dropBuf) {
+    dropBuf += ch;
+    if (dropTimer) clearTimeout(dropTimer);
+    dropTimer = setTimeout(evalDrop, 120);
+    lastPrintTs = now; lastPrintCh = ch;
+    return true;
+  }
+  // burst start: two DIFFERENT printable chars within 35ms
+  // (same-char sequences are key autorepeat, e.g. holding j/k — never treated as a drop)
+  if (now - lastPrintTs < 35 && ch !== lastPrintCh && lastPrintCh) {
+    dropBuf = lastPrintCh + ch;
+    dropTimer = setTimeout(evalDrop, 120);
+    lastPrintTs = now; lastPrintCh = ch;
+    return true;
+  }
+  lastPrintTs = now; lastPrintCh = ch;
+  return false;
 }
 
 // ── File Watcher (auto-refresh on changes) ──────────────
@@ -1647,6 +1768,9 @@ screen.on('keypress', (ch, key) => {
   if (!key) return;
   markActive();
   if (dialogOpen) return;  // Block ALL keys while dialog/menu is open
+
+  // Drag&drop burst detection (must run before any other key handling)
+  if (!key.ctrl && !key.meta && handleDropChar(ch)) return;
 
   // Alt+Shift+C — copy path (works with c, C, ㅊ for Korean IME)
   if (key.meta && key.shift && (key.name === 'c' || ch === 'C' || ch === 'ㅊ')) {
@@ -1769,6 +1893,9 @@ screen.on('keypress', (ch, key) => {
       break;
     case 'delete':
       deleteEntry();
+      break;
+    case 'd':
+      downloadSelected();
       break;
     case 'f9':
       registerClaudeWorkspace();
