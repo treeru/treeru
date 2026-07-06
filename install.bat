@@ -168,6 +168,9 @@ echo.
 :install_treeru
 echo [5/7] Installing TreeRU...
 
+:: Stop running TreeRU instances first (upgrade safety — files/deps are replaced below)
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*TreeRU\index.js*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
 :: Source files are in app/ subfolder
