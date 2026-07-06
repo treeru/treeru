@@ -188,6 +188,17 @@ echo       Installing dependencies...
 call npm install --production 2>nul
 popd
 
+:: Verify dependencies actually installed
+if not exist "%INSTALL_DIR%\node_modules\blessed" (
+    echo.
+    echo [!] Dependency install failed. TreeRU will not run yet.
+    echo     Fix: open a terminal in "%INSTALL_DIR%" and run: npm install --production
+    echo.
+    echo [!] 의존성 설치에 실패했습니다. 이대로는 실행되지 않습니다.
+    echo     해결: "%INSTALL_DIR%" 에서 npm install --production 을 실행해주세요.
+    echo.
+)
+
 :: Create launcher with UTF-8 codepage
 (
     echo @echo off

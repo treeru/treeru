@@ -45,8 +45,13 @@ echo [2/3] Removing from PATH...
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('PATH','Machine'); $parts=$p.Split(';') | Where-Object { $_ -ne '%INSTALL_DIR%' }; $newPath=$parts -join ';'; [Environment]::SetEnvironmentVariable('PATH',$newPath,'Machine')"
 echo       Done
 
-echo [3/3] Removing desktop shortcut...
+echo [3/4] Removing desktop shortcut...
 powershell -NoProfile -Command "$lnk = [Environment]::GetFolderPath('Desktop') + '\TreeRU.lnk'; if (Test-Path $lnk) { Remove-Item $lnk -Force; Write-Host '      Done' } else { Write-Host '      Not found (skipped)' }"
+
+echo [4/4] Removing user data...
+if exist "%USERPROFILE%\.treeru_claude_profile" rmdir /S /Q "%USERPROFILE%\.treeru_claude_profile" >nul 2>&1
+del /Q "%USERPROFILE%\.treeru_claude.json" "%USERPROFILE%\.treeru_config.json" "%USERPROFILE%\.treeru_hosts.json" >nul 2>&1
+echo       Done
 
 echo.
 echo TreeRU has been removed.

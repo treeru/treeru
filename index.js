@@ -63,6 +63,16 @@ let sftpSession = null;
 
 const isWindows = process.platform === 'win32';
 
+// ── User Config ─────────────────────────────────────────
+const CONFIG_FILE = path.join(os.homedir(), '.treeru_config.json');
+function loadConfig() {
+  const def = { claudeSkipPermissions: false };
+  try { return Object.assign(def, JSON.parse(readFileSync(CONFIG_FILE, 'utf8'))); } catch {}
+  try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(def, null, 2)); } catch {}
+  return def;
+}
+const config = loadConfig();
+
 // ── Claude Code Workspace ───────────────────────────────
 const CLAUDE_WS_FILE = path.join(os.homedir(), '.treeru_claude.json');
 
@@ -115,11 +125,14 @@ function registerClaudeWorkspace() {
 
 function launchClaudeCode(ws) {
   const batFile = path.join(os.tmpdir(), 'treeru_claude.bat');
+  // Opt-in via ~/.treeru_config.json: { "claudeSkipPermissions": true }
+  const claudeCmd = 'claude' + (config.claudeSkipPermissions ? ' --dangerously-skip-permissions' : '');
   let cmd;
   if (ws.type === 'remote') {
-    cmd = `wt nt cmd /k ssh -t ${ws.host} "cd '${ws.path}' && claude --dangerously-skip-permissions || exec bash -l"`;
+    const rp = ws.path.replace(/'/g, `'\\''`);
+    cmd = `wt nt cmd /k ssh -t ${ws.host} "cd '${rp}' && ${claudeCmd} || exec bash -l"`;
   } else {
-    cmd = `cd /d "${ws.path}"\r\nclaude --dangerously-skip-permissions`;
+    cmd = `cd /d "${ws.path.replace(/%/g, '%%')}"\r\n${claudeCmd}`;
   }
   fs.writeFileSync(batFile, `@echo off\r\n${cmd}\r\n`);
   if (ws.type === 'remote') {
@@ -128,238 +141,6 @@ function launchClaudeCode(ws) {
     require('child_process').exec(`start "" "${batFile}"`);
   }
   showMessage(`Claude Code: ${wsLabel(ws)}`);
-}
-
-// ── Claude Usage (F8 toggle) ────────────────────────────
-const CLAUDE_PROFILE_DIR = path.join(os.homedir(), '.treeru_claude_profile');
-const CLAUDE_USAGE_INTERVAL = 60000; // 1 minute
-let claudeUsageText = '';
-let claudeUsageFetching = false;
-let claudeUsageActive = false;
-let claudeUsageTimer = null;
-let claudeBrowser = null;
-let claudePage = null;
-
-function findChromePath() {
-  const candidates = [
-    path.join(process.env.PROGRAMFILES || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(process.env.PROGRAMFILES || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    path.join(process.env['PROGRAMFILES(X86)'] || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-  ];
-  for (const p of candidates) {
-    try { fs.accessSync(p); return p; } catch {}
-  }
-  return null;
-}
-
-async function ensureClaudeBrowser() {
-  if (claudeBrowser && claudePage) {
-    try { await claudePage.evaluate(() => true); return true; } catch {}
-    claudeBrowser = null; claudePage = null;
-  }
-  let puppeteer;
-  try {
-    puppeteer = require('puppeteer-extra');
-    puppeteer.use(require('puppeteer-extra-plugin-stealth')());
-  } catch { return false; }
-  const chromePath = findChromePath();
-  if (!chromePath) return false;
-  try {
-    claudeBrowser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: 'new',
-      userDataDir: CLAUDE_PROFILE_DIR,
-      args: ['--disable-gpu', '--disable-extensions', '--window-size=800,600'],
-    });
-    claudePage = await claudeBrowser.newPage();
-    await claudePage.setRequestInterception(true);
-    claudePage.on('request', req => {
-      const t = req.resourceType();
-      if (t === 'image' || t === 'font' || t === 'media') req.abort();
-      else req.continue();
-    });
-    await claudePage.goto('https://claude.ai/settings/usage', {
-      waitUntil: 'networkidle2', timeout: 15000,
-    });
-    return true;
-  } catch {
-    claudeBrowser = null; claudePage = null;
-    return false;
-  }
-}
-
-async function closeClaudeBrowser() {
-  if (claudeBrowser) {
-    await claudeBrowser.close().catch(() => {});
-    claudeBrowser = null;
-    claudePage = null;
-  }
-}
-
-async function fetchClaudeUsage() {
-  if (!await ensureClaudeBrowser()) return { error: true };
-  try {
-    const data = await claudePage.evaluate(async () => {
-      const org = document.cookie.match(/lastActiveOrg=([^;]+)/)?.[1];
-      if (!org) return null;
-      const r = await fetch('/api/organizations/' + org + '/usage');
-      if (!r.ok) return null;
-      return r.json();
-    });
-    if (!data) return { loggedIn: false };
-    return { loggedIn: true, usage: data };
-  } catch {
-    return { error: true };
-  }
-}
-
-function formatResetTime(resetsAt) {
-  if (!resetsAt) return '';
-  const diff = new Date(resetsAt) - Date.now();
-  if (diff <= 0) return '0:00';
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  return `${h}:${m.toString().padStart(2, '0')}`;
-}
-
-function buildUsageText(usage) {
-  const parts = [];
-  if (usage.five_hour) {
-    const time = formatResetTime(usage.five_hour.resets_at);
-    const pct = Math.round(usage.five_hour.utilization);
-    const color = pct >= 80 ? '#E06C75' : pct >= 50 ? '#E5C07B' : '#61AFEF';
-    parts.push(`{${color}-fg}Session ${pct}% ${time}{/}`);
-  }
-  if (usage.seven_day) {
-    const pct = Math.round(usage.seven_day.utilization);
-    const color = pct >= 80 ? '#E06C75' : pct >= 50 ? '#E5C07B' : '#61AFEF';
-    parts.push(`{${color}-fg}Weekly ${pct}%{/}`);
-  }
-  if (parts.length > 0) parts.push('{#555555-fg}AUTO{/}');
-  return parts.length > 0 ? parts.join(' {#444444-fg}|{/} ') : '';
-}
-
-function doClaudeUsageFetch() {
-  if (claudeUsageFetching || !claudeUsageActive) return;
-  claudeUsageFetching = true;
-
-  fetchClaudeUsage().then(result => {
-    claudeUsageFetching = false;
-    if (!claudeUsageActive) return;
-    if (result.error) {
-      claudeUsageText = '{#E06C75-fg}Usage error{/} {#555555-fg}AUTO{/}';
-      render();
-      return;
-    }
-    if (!result.loggedIn) {
-      // Session expired — show login guide
-      if (claudeUsageTimer) { clearInterval(claudeUsageTimer); claudeUsageTimer = null; }
-      claudeUsageText = '';
-      closeClaudeBrowser();
-      render();
-      showClaudeLoginGuide();
-      openClaudeLogin();
-      return;
-    }
-    claudeUsageText = buildUsageText(result.usage);
-    render();
-  }).catch(() => {
-    claudeUsageFetching = false;
-    if (!claudeUsageActive) return;
-    claudeUsageText = '{#E06C75-fg}Usage error{/} {#555555-fg}AUTO{/}';
-    render();
-  });
-}
-
-function hasClaudeProfile() {
-  try {
-    fs.accessSync(path.join(CLAUDE_PROFILE_DIR, 'Default', 'Network', 'Cookies'));
-    return true;
-  } catch { return false; }
-}
-
-function openClaudeLogin() {
-  const chromePath = findChromePath();
-  if (chromePath) {
-    require('child_process').spawn(chromePath, [
-      `--user-data-dir=${CLAUDE_PROFILE_DIR}`,
-      'https://claude.ai/settings/usage',
-    ], { detached: true, stdio: 'ignore' }).unref();
-  }
-}
-
-let claudeLoginBox = null;
-
-function showClaudeLoginGuide() {
-  if (claudeLoginBox) return;
-  claudeLoginBox = blessed.box({
-    parent: screen, top: 'center', left: 'center',
-    width: 58, height: 8,
-    border: { type: 'line' }, tags: true,
-    style: { border: { fg: '#E5C07B' }, bg: C.header, fg: C.fg },
-    label: ' Clau​de Usage ',
-    content: [
-      '',
-      '  {#E5C07B-fg}A browser window has opened.{/}',
-      '  {#E5C07B-fg}Please log in to claude.ai (one-time only).{/}',
-      '',
-      '  {#87AFD7-fg}After login, close the browser and press F8.{/}',
-      '  {#87AFD7-fg}Usage will appear in the top-right header.{/}',
-    ].join('\n'),
-  });
-  screen.render();
-}
-
-function hideClaudeLoginGuide() {
-  if (claudeLoginBox) {
-    claudeLoginBox.destroy();
-    claudeLoginBox = null;
-    render();
-  }
-}
-
-function startClaudeUsage() {
-  claudeUsageActive = true;
-
-  if (!hasClaudeProfile()) {
-    // First time — no profile exists, open login browser immediately
-    showClaudeLoginGuide();
-    openClaudeLogin();
-    return;
-  }
-
-  claudeUsageText = '{#E5C07B-fg}Loading...{/}';
-  render();
-  doClaudeUsageFetch();
-  claudeUsageTimer = setInterval(doClaudeUsageFetch, CLAUDE_USAGE_INTERVAL);
-}
-
-function stopClaudeUsage() {
-  claudeUsageActive = false;
-  if (claudeUsageTimer) { clearInterval(claudeUsageTimer); claudeUsageTimer = null; }
-  claudeUsageText = '';
-  hideClaudeLoginGuide();
-  closeClaudeBrowser();
-  render();
-}
-
-function toggleClaudeUsage() {
-  if (claudeLoginBox) {
-    // Login guide is showing — user logged in and pressed F8 again
-    hideClaudeLoginGuide();
-    claudeUsageText = '{#E5C07B-fg}Loading...{/}';
-    render();
-    doClaudeUsageFetch();
-    claudeUsageTimer = setInterval(doClaudeUsageFetch, CLAUDE_USAGE_INTERVAL);
-    return;
-  }
-  if (claudeUsageActive) {
-    stopClaudeUsage();
-    showMessage('{#87AFD7-fg}Usage monitor OFF{/}');
-  } else {
-    startClaudeUsage();
-  }
 }
 
 function showClaudeMenu() {
@@ -463,6 +244,11 @@ function getSSHInfo(alias) {
 }
 
 // ── SFTP ────────────────────────────────────────────────
+// Pinned host key hashes (trust-on-first-use)
+const HOST_KEYS_FILE = path.join(os.homedir(), '.treeru_hosts.json');
+function loadHostKeys() { try { return JSON.parse(readFileSync(HOST_KEYS_FILE, 'utf8')); } catch { return {}; } }
+function saveHostKeys(k) { try { fs.writeFileSync(HOST_KEYS_FILE, JSON.stringify(k, null, 2)); } catch {} }
+
 function connectSFTP(alias, callback) {
   const info = getSSHInfo(alias);
   let keyPath = info.identityFile.replace(/^~/, os.homedir()).replace(/"/g, '');
@@ -478,6 +264,7 @@ function connectSFTP(alias, callback) {
   if (!privateKey) { callback(new Error('No SSH key found')); return; }
 
   const conn = new SSHClient();
+  let hostKeyMismatch = false;
   conn.on('ready', () => {
     conn.sftp((err, sftp) => {
       if (err) { callback(err); return; }
@@ -490,7 +277,9 @@ function connectSFTP(alias, callback) {
   });
   conn.on('error', (err) => {
     log('SFTP | connection error:', err.message);
-    callback(err);
+    callback(hostKeyMismatch
+      ? new Error('Host key​ changed! If expected, remove it from ~/.treeru_hosts.json')
+      : err);
   });
   conn.on('close', () => {
     log('SFTP | connection closed');
@@ -506,12 +295,13 @@ function connectSFTP(alias, callback) {
     privateKey,
     hostHash: 'sha256',
     hostVerifier: (hash) => {
-      // Verify against known_hosts (best-effort, allow if file missing)
-      try {
-        const knownHosts = readFileSync(path.join(os.homedir(), '.ssh', 'known_hosts'), 'utf8');
-        if (knownHosts.includes(info.host)) return true;
-      } catch {}
-      return true; // Allow connection if known_hosts unavailable
+      // Trust-on-first-use: pin the host key hash, refuse if it changes later
+      const id = `${info.host}:${info.port}`;
+      const known = loadHostKeys();
+      if (!known[id]) { known[id] = hash; saveHostKeys(known); return true; }
+      if (known[id] === hash) return true;
+      hostKeyMismatch = true;
+      return false;
     },
   });
 }
@@ -828,8 +618,7 @@ function renderHeader() {
     const hostCount = Object.keys(sshConfig).length;
     right = hostCount > 0 ? `{${C.dim}-fg}${hostCount} SSH hosts{/} ` : '';
   }
-  const usagePart = claudeUsageText ? claudeUsageText + '  ' : '';
-  const rightFull = usagePart + right;
+  const rightFull = right;
   const pad = Math.max(0, screen.width - title.length - rightFull.replace(/\{[^}]*\}/g, '').length);
   headerBar.setContent(`{bold}{cyan-fg}${title}{/}${' '.repeat(pad)}${rightFull}`);
 }
@@ -861,7 +650,6 @@ function renderFnBar() {
     '{white-fg}{bold}Del{/}{#87AFD7-fg} Recycle{/}',
   ];
   const row2 = [
-    '{white-fg}{bold}F8{/}{#E5C07B-fg} Usage{/}',
     '{white-fg}{bold}F9{/}{#E5C07B-fg} Claude+{/}',
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
     '{white-fg}{bold}F12{/}{#E5C07B-fg} Claude{/}',
@@ -949,10 +737,8 @@ function confirmDialog(msg, callback, extraKeyHandler) {
     if (!key) return;
     if (extraKeyHandler) {
       const result = extraKeyHandler(ch, key);
-      if (result === 'permanent') {
-        const entry = panel.entries[panel.selectedIndex];
-        const target = path.join(panel.cwd, entry.name);
-        closeBox(); setTimeout(() => { dialogOpen = false; permanentDelete(target); }, 50);
+      if (typeof result === 'function') {
+        closeBox(); setTimeout(() => { dialogOpen = false; result(); }, 50);
         return;
       }
     }
@@ -1180,10 +966,6 @@ function openViewer(fp, name) {
 
   const lines = content.split('\n');
   const lineNumW = String(lines.length).length;
-  const numbered = lines.map((l, i) => {
-    const num = String(i + 1).padStart(lineNumW);
-    return `{gray-fg}${num}{/} ${l.replace(/\{/g, '{open}').replace(/\{open\}/g, '{')}`;
-  });
 
   dialogOpen = true;
 
@@ -1207,8 +989,8 @@ function openViewer(fp, name) {
   // Plain text content with line numbers
   const plainLines = lines.map((l, i) => {
     const num = String(i + 1).padStart(lineNumW);
-    // Escape blessed tags in file content
-    const safe = l.replace(/\{/g, '\\{');
+    // Escape blessed tags in file content ({open} renders a literal brace)
+    const safe = l.replace(/\{/g, '{open}');
     return `{gray-fg}${num}{/}{white-fg} ${safe}{/}`;
   });
   viewer.setContent(plainLines.join('\n'));
@@ -1242,8 +1024,7 @@ function openViewer(fp, name) {
       closeViewer();
       require('child_process').spawn('notepad.exe', [fp], { detached: true, stdio: 'ignore' }).unref();
     } else if (ch === 'c' || ch === 'C') {
-      const text = content.replace(/\r\n/g, '\n');
-      execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`], (err) => {
+      copyTextToClipboard(content.replace(/\r\n/g, '\n'), (err) => {
         showMessage(err ? 'Copy failed' : 'Copied to clipboard');
       });
     }
@@ -1269,17 +1050,30 @@ function copyPathToClipboard() {
     if (!entry || entry.name === '..') return;
     paths.push(remoteMode ? remoteCwd + '/' + entry.name : path.join(panel.cwd, entry.name));
   }
-  const text = paths.join(', ');
+  copyTextToClipboard(paths.join(', '), (err) => {
+    showMessage(err ? 'Copy failed' : `Copied ${paths.length} path(s)`);
+  });
+}
+
+// Copy arbitrary-length text via temp file (command-line args are capped at ~32K chars on Windows)
+function copyTextToClipboard(text, cb) {
   if (isWindows) {
-    execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`], (err) => {
-      showMessage(err ? 'Copy failed' : `Copied ${paths.length} path(s)`);
+    const tmp = path.join(os.tmpdir(), `treeru_clip_${process.pid}.txt`);
+    try { fs.writeFileSync(tmp, text, 'utf8'); } catch (e) { cb(e); return; }
+    execFile('powershell', ['-NoProfile', '-Command',
+      `Get-Content -LiteralPath '${tmp.replace(/'/g, "''")}' -Raw -Encoding UTF8 | Set-Clipboard`], (err) => {
+      try { fs.unlinkSync(tmp); } catch {}
+      cb(err);
     });
   } else {
     const cmd = process.platform === 'darwin' ? 'pbcopy' : 'xclip';
     const args = process.platform === 'darwin' ? [] : ['-selection', 'clipboard'];
     const child = require('child_process').spawn(cmd, args);
+    let done = false;
+    const finish = (e) => { if (!done) { done = true; cb(e); } };
+    child.on('error', finish);
+    child.on('close', () => finish(null));
     child.stdin.end(text);
-    child.on('close', () => showMessage(`Copied ${paths.length} path(s)`));
   }
 }
 
@@ -1307,43 +1101,68 @@ function makeDirectory() {
 }
 
 function deleteEntry() {
-  const entry = panel.entries[panel.selectedIndex];
-  if (!entry || entry.name === '..') return;
+  // Delete all marked entries if any, otherwise the one under the cursor
+  const names = [];
+  if (panel.marked.size > 0) {
+    panel.entries.forEach(e => { if (panel.marked.has(e.name) && e.name !== '..') names.push(e.name); });
+  } else {
+    const entry = panel.entries[panel.selectedIndex];
+    if (!entry || entry.name === '..') return;
+    names.push(entry.name);
+  }
+  if (names.length === 0) return;
+  const label = names.length === 1 ? `"${names[0]}"` : `${names.length} items`;
   if (remoteMode) {
-    confirmDialog(`Delete "${entry.name}"? (permanent)`, () => {
-      const rp = remoteCwd + '/' + entry.name;
-      if (entry.type === 'dir') {
-        sftpSession.rmdir(rp, (err) => {
-          if (err) showMessage('Delete failed: ' + err.message);
-          else refreshRemote();
-        });
-      } else {
-        sftpSession.unlink(rp, (err) => {
-          if (err) showMessage('Delete failed: ' + err.message);
-          else refreshRemote();
-        });
-      }
-    });
+    confirmDialog(`Delete ${label}? (permanent)`, () => deleteRemoteEntries(names));
     return;
   }
-  const target = path.join(panel.cwd, entry.name);
-  confirmDialog(`Recycle "${entry.name}"?\n\n {green-fg}Enter/Y{/} = Recycle Bin   {yellow-fg}Shift+D{/} = Permanent   {red-fg}Esc/N{/} = Cancel`, () => {
-    moveToRecycleBin(target);
+  const targets = names.map(n => path.join(panel.cwd, n));
+  confirmDialog(`Recycle ${label}?\n\n {green-fg}Enter/Y{/} = Recycle Bin   {yellow-fg}Shift+D{/} = Permanent   {red-fg}Esc/N{/} = Cancel`, () => {
+    panel.marked.clear();
+    moveToRecycleBin(targets);
   }, (ch, key) => {
     if (key && key.name === 'd' && key.shift) {
-      return 'permanent';
+      return () => { panel.marked.clear(); permanentDelete(targets); };
     }
   });
 }
 
-function moveToRecycleBin(target) {
+function deleteRemoteEntries(names) {
+  const errs = [];
+  let i = 0;
+  const next = () => {
+    if (i >= names.length) {
+      panel.marked.clear();
+      if (errs.length) showMessage(`Delete failed: ${errs.length} item(s) — ${errs[0]}`);
+      refreshRemote();
+      return;
+    }
+    const name = names[i++];
+    const entry = panel.entries.find(e => e.name === name);
+    const rp = remoteCwd + '/' + name;
+    const done = (err) => { if (err) errs.push(err.message); next(); };
+    if (entry && entry.type === 'dir') sftpSession.rmdir(rp, done);
+    else sftpSession.unlink(rp, done);
+  };
+  next();
+}
+
+function moveToRecycleBin(targets) {
   try {
     if (watcher) { try { watcher.close(); } catch {} watcher = null; }
-    const ps = `$sh = New-Object -ComObject Shell.Application; $ns = $sh.NameSpace(10); $ns.MoveHere('${target.replace(/'/g, "''")}')`;
-    execFile('powershell', ['-NoProfile', '-Command', ps], { timeout: 10000 }, (err) => {
-      if (err) {
-        showMessage('Recycle failed: ' + err.message);
-        watchDir();
+    const list = targets.map(t => `'${t.replace(/'/g, "''")}'`).join(',');
+    // MoveHere is asynchronous — wait until each source path is gone, then verify
+    const ps = `$sh = New-Object -ComObject Shell.Application; $ns = $sh.NameSpace(10); $failed = 0; ` +
+      `foreach ($p in @(${list})) { $ns.MoveHere($p); $i = 0; ` +
+      `while ((Test-Path -LiteralPath $p) -and $i -lt 80) { Start-Sleep -Milliseconds 100; $i++ }; ` +
+      `if (Test-Path -LiteralPath $p) { $failed++ } }; ` +
+      `if ($failed -gt 0) { Write-Output ('FAIL ' + $failed); exit 1 }; Write-Output 'OK'`;
+    execFile('powershell', ['-NoProfile', '-Command', ps], { timeout: 120000 }, (err, stdout) => {
+      const out = (stdout || '').trim();
+      if (err || out !== 'OK') {
+        const n = out.startsWith('FAIL') ? out.split(' ')[1] : '';
+        showMessage(`Recycle failed${n ? `: ${n} item(s) not moved` : ''}`);
+        watchDir(); render();
       } else {
         setTimeout(() => { watchDir(); render(); }, 100);
       }
@@ -1351,16 +1170,17 @@ function moveToRecycleBin(target) {
   } catch (e) { watchDir(); showMessage('Recycle failed: ' + e.message); }
 }
 
-function permanentDelete(target) {
-  try {
-    if (watcher) { try { watcher.close(); } catch {} watcher = null; }
-    if (fs.statSync(target).isDirectory()) {
-      fs.rmSync(target, { recursive: true, force: true });
-    } else {
-      fs.unlinkSync(target);
-    }
-    setTimeout(() => { watchDir(); render(); }, 100);
-  } catch (e) { watchDir(); showMessage('Delete failed: ' + e.message); }
+function permanentDelete(targets) {
+  if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+  const errs = [];
+  for (const target of targets) {
+    try {
+      if (fs.statSync(target).isDirectory()) fs.rmSync(target, { recursive: true, force: true });
+      else fs.unlinkSync(target);
+    } catch (e) { errs.push(e.message); }
+  }
+  if (errs.length) showMessage(`Delete failed: ${errs.length} item(s) — ${errs[0]}`);
+  setTimeout(() => { watchDir(); render(); }, 100);
 }
 
 function renameEntry() {
@@ -1386,7 +1206,6 @@ function renameEntry() {
 
 // ── Clipboard Image Watcher ─────────────────────────────
 let lastClipSeq = -1;
-let lastSavedClipSeq = -1;
 let clipInterval = null;
 let clipChecking = false;
 
@@ -1406,24 +1225,30 @@ function startClipboardWatcher() {
 
       if (lastClipSeq === -1) {
         lastClipSeq = seq;
-        lastSavedClipSeq = seq;
         return;
       }
       if (seq !== lastClipSeq) {
         lastClipSeq = seq;
         log('clipboard | changed, seq:', seq);
-        if (!dialogOpen) {
-          lastSavedClipSeq = seq;
-          saveClipboardImage();
-        }
+        // Only the instance that last received user input saves the screenshot;
+        // the per-seq claim lock prevents duplicate saves across instances.
+        if (!isActiveInstance()) return;
+        if (!claimClipSeq(seq)) return;
+        saveClipboardImage();
       }
     });
   }, 1500);
 }
 
+function localTimestamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+}
+
 function saveClipboardImage() {
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = `screenshot_${ts}.png`;
+  const filename = `screenshot_${localTimestamp()}.png`;
+  const quiet = dialogOpen; // still save while a dialog is open, just skip UI feedback
   let savePath;
 
   if (remoteMode) {
@@ -1440,11 +1265,12 @@ function saveClipboardImage() {
       const rp = remoteCwd + '/' + filename;
       sftpSession.fastPut(savePath, rp, (ue) => {
         try { fs.unlinkSync(savePath); } catch {}
+        if (quiet || dialogOpen) return;
         if (ue) { showMessage('Upload failed'); return; }
         showMessage('📷 ' + filename + ' → ' + remoteHost);
         refreshRemote();
       });
-    } else {
+    } else if (!quiet && !dialogOpen) {
       showMessage('📷 ' + filename);
       render();
     }
@@ -1518,6 +1344,7 @@ function mouseHitTest(data) {
 }
 
 screen.on('mouse', (data) => {
+  markActive();
   if (dialogOpen) return;
 
   if (data.action === 'mousedown') {
@@ -1580,6 +1407,7 @@ screen.on('mouse', (data) => {
 // ── Key Bindings ────────────────────────────────────────
 screen.on('keypress', (ch, key) => {
   if (!key) return;
+  markActive();
   if (dialogOpen) return;  // Block ALL keys while dialog/menu is open
 
   // Alt+Shift+C — copy path (works with c, C, ㅊ for Korean IME)
@@ -1685,9 +1513,6 @@ screen.on('keypress', (ch, key) => {
     case 'delete':
       deleteEntry();
       break;
-    case 'f8':
-      toggleClaudeUsage();
-      break;
     case 'f9':
       registerClaudeWorkspace();
       break;
@@ -1721,48 +1546,73 @@ screen.on('resize', () => {
   panel.scrollOffset = 0;
   render();
 });
-// ── PID Management (kill previous zombie, save current) ──
-const PID_FILE = path.join(os.tmpdir(), '.treeru.pid');
+// ── Instance Coordination (multi-instance safe) ─────────
+// Multiple TreeRU windows/panes may run at once. The instance that last
+// received user input is the "active" one — only it saves clipboard screenshots.
+const ACTIVE_FILE = path.join(os.tmpdir(), '.treeru_active');
+const CLAIM_PREFIX = '.treeru_claim_';
+let lastActiveWrite = 0;
 
-function killPreviousInstance() {
+function markActive() {
+  const now = Date.now();
+  if (now - lastActiveWrite < 1000) return;
+  lastActiveWrite = now;
+  try { fs.writeFileSync(ACTIVE_FILE, String(process.pid)); } catch {}
+}
+
+function isPidAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+function isActiveInstance() {
   try {
-    const lines = readFileSync(PID_FILE, 'utf8').trim().split('\n');
-    const oldPid = parseInt(lines[0], 10);
-    const oldParent = lines[1] ? parseInt(lines[1], 10) : null;
-    if (oldPid && oldPid !== process.pid) {
-      try { require('child_process').execSync(`taskkill /PID ${oldPid} /T /F`, { stdio: 'ignore' }); } catch {}
-      if (oldParent && oldParent !== process.ppid) {
-        try { require('child_process').execSync(`taskkill /PID ${oldParent} /F`, { stdio: 'ignore' }); } catch {}
-      }
-      log('init | killed previous instance PID:', oldPid, 'parent:', oldParent);
+    const pid = parseInt(readFileSync(ACTIVE_FILE, 'utf8').trim(), 10);
+    if (!pid || pid === process.pid) return true;
+    return !isPidAlive(pid); // stale entry — claim lock below breaks the tie
+  } catch { return true; }
+}
+
+function claimClipSeq(seq) {
+  // Atomic per-seq lock so two instances never save the same screenshot twice
+  try { fs.writeFileSync(path.join(os.tmpdir(), CLAIM_PREFIX + seq), String(process.pid), { flag: 'wx' }); return true; }
+  catch { return false; }
+}
+
+function cleanupStaleClaims() {
+  try {
+    const cutoff = Date.now() - 3600000;
+    for (const f of fs.readdirSync(os.tmpdir())) {
+      if (!f.startsWith(CLAIM_PREFIX)) continue;
+      const fp = path.join(os.tmpdir(), f);
+      try { if (fs.statSync(fp).mtimeMs < cutoff) fs.unlinkSync(fp); } catch {}
     }
   } catch {}
 }
 
-
-function savePid() {
-  try { fs.writeFileSync(PID_FILE, `${process.pid}\n${process.ppid}`); } catch {}
-}
-
-function removePid() {
-  try { fs.unlinkSync(PID_FILE); } catch {}
+function releaseActiveFile() {
+  try {
+    const pid = parseInt(readFileSync(ACTIVE_FILE, 'utf8').trim(), 10);
+    if (pid === process.pid) fs.unlinkSync(ACTIVE_FILE);
+  } catch {}
 }
 
 function cleanup() {
   if (clipInterval) { clearInterval(clipInterval); clipInterval = null; }
   disconnectSFTP();
   if (watcher) { try { watcher.close(); } catch {} watcher = null; }
-  if (claudeUsageTimer) { clearInterval(claudeUsageTimer); claudeUsageTimer = null; }
-  if (claudeBrowser) { claudeBrowser.close().catch(() => {}); claudeBrowser = null; }
-  removePid();
+  releaseActiveFile();
 }
 process.on('SIGINT', () => { cleanup(); process.exit(0); });
 process.on('SIGTERM', () => { cleanup(); process.exit(0); });
 process.on('exit', cleanup);
 
 // ── Init ────────────────────────────────────────────────
-killPreviousInstance();
-savePid();
+// One-time cleanup of leftovers from removed features:
+// browser profile of the old F8 usage monitor (held session cookies) + legacy pid file
+try { fs.rmSync(path.join(os.homedir(), '.treeru_claude_profile'), { recursive: true, force: true }); } catch {}
+try { fs.unlinkSync(path.join(os.tmpdir(), '.treeru.pid')); } catch {}
+cleanupStaleClaims();
+markActive();
 
 const startDir = process.argv[2] || process.cwd();
 panel.cwd = path.resolve(startDir);

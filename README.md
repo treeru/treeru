@@ -32,21 +32,10 @@ Works with SSH too — connect via `F10`, navigate to the remote folder, `F9` to
 
 Press `Del` in the `F12` menu to remove a workspace.
 
-## Claude Usage Monitor (F8)
-
-Press `F8` to see your Claude usage in the header bar — session usage with remaining time, and weekly usage percentage.
-
-```
-  TreeRU v1073                          Session 12% 2:53 | Weekly 5%  3 SSH hosts
-```
-
-- **First press** takes ~3 seconds (launches a headless browser in the background)
-- **Subsequent presses** refresh in ~0.4 seconds (reuses the running browser)
-- Colors change based on usage: blue (<50%), yellow (50–80%), red (>80%)
-
-**First-time setup:** On the first `F8` press, a Chrome window will open for you to log in to [claude.ai](https://claude.ai). Close it after logging in, then press `F8` again. Your session is saved locally — you won't need to log in again until it expires.
-
-> Requires Google Chrome or Microsoft Edge. Session cookies are stored in `~/.treeru_claude_profile/`.
+> By default `F12` launches plain `claude`. If you want it to launch with
+> `--dangerously-skip-permissions`, set `"claudeSkipPermissions": true` in
+> `~/.treeru_config.json` (created on first run). Only enable this if you
+> understand what the flag does.
 
 ## Features
 
@@ -57,6 +46,7 @@ Press `F8` to see your Claude usage in the header bar — session usage with rem
 - **F5 File paste** — Copy files in Explorer (Ctrl+C) → paste in TreeRU with `F5`. Works with SSH remote folders
 - **SSH/SFTP remote browsing** — Press `F10` to connect to servers from your `~/.ssh/config` (SSH key auth required)
 - **Clipboard image auto-save** — Take a screenshot and it auto-saves to the current folder. Works with Windows 11 Print Screen, Snipaste, Win+Shift+S, and more
+- **Multiple instances** — Run TreeRU in several panes/tabs at once. Screenshots are saved only by the instance you last interacted with, never duplicated
 - **Multi-path copy (Alt+Shift+C)** — Copy selected file paths (comma-separated). Handy for passing paths to AI CLI tools
 - **CJK filename support** — Correctly displays CJK (Korean, Japanese, Chinese) filenames
 - **Auto-refresh** — Automatically reflects local file changes
@@ -115,7 +105,6 @@ node index.js
 
 ### Requires
 - [Node.js](https://nodejs.org) v20.18.1 LTS recommended (v18+ supported)
-- [Google Chrome](https://www.google.com/chrome/) or Microsoft Edge — required for F8 Claude usage monitor (headless browser). Edge is pre-installed on Windows 10/11
 - [Windows Terminal](https://apps.microsoft.com/detail/9N0DX20HK701) — required for F9/F12 Claude Code launch. Pre-installed on Windows 11, but update to latest recommended. Windows 10 users must install manually:
   - Microsoft Store → search "Windows Terminal", or
   - `winget install Microsoft.WindowsTerminal`
@@ -145,8 +134,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `F4` | Edit in Notepad |
 | `F5` | Paste files from clipboard |
 | `F7` | Create new folder |
-| `Del` | Recycle (Shift+D for permanent delete) |
-| `F8` | Refresh Claude usage (shown in header) |
+| `Del` | Move to Recycle Bin — applies to all selected files (Shift+D for permanent delete) |
 | `F9` | Register current folder as Claude Code workspace |
 | `F10` | SSH connect / disconnect |
 | `F12` | Launch Claude Code from registered workspace |
@@ -171,6 +159,8 @@ Select one to browse remote files via SFTP.
 
 > SSH key authentication must be configured. Password authentication is not supported.
 
+Host keys are pinned on first connect (trust-on-first-use) in `~/.treeru_hosts.json`. If a server's host key changes, the connection is refused — remove the entry from that file if the change was intentional.
+
 ## Clipboard Auto-Paste
 
 When you copy a screenshot to the clipboard, TreeRU automatically detects it and saves it as `screenshot_YYYY-MM-DDTHH-MM-SS.png` in the current folder.
@@ -184,6 +174,7 @@ When you copy a screenshot to the clipboard, TreeRU automatically detects it and
 - Local folder: saved immediately
 - SSH remote folder: auto-uploaded via SFTP
 - Delay: ~1–2 seconds (varies by system)
+- With multiple TreeRU instances running, only the one you last interacted with saves the screenshot
 
 ## Made by
 
