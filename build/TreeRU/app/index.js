@@ -511,11 +511,17 @@ function disconnectSFTP(ses) {
 function readLocalDir(dirPath) {
   try {
     const raw = fs.readdirSync(dirPath, { withFileTypes: true });
-    const entries = raw.map(d => ({
-      name: d.name,
-      type: d.isDirectory() ? 'dir' : d.isSymbolicLink() ? 'symlink' : 'file',
-      hidden: d.name.startsWith('.'),
-    }));
+    const entries = raw.map(d => {
+      let type = d.isDirectory() ? 'dir' : d.isSymbolicLink() ? 'symlink' : 'file';
+      const link = d.isSymbolicLink();
+      // Follow a symlink to see if it points at a directory — if so treat it as a
+      // navigable folder (otherwise a dir-symlink like treeweb → /data2/treeweb
+      // shows as a file and can't be entered).
+      if (link) {
+        try { if (fs.statSync(path.join(dirPath, d.name)).isDirectory()) type = 'dir'; } catch {}
+      }
+      return { name: d.name, type, link, hidden: d.name.startsWith('.') };
+    });
     entries.sort((a, b) => {
       if (a.type === 'dir' && b.type !== 'dir') return -1;
       if (a.type !== 'dir' && b.type === 'dir') return 1;
@@ -544,15 +550,28 @@ function readRemoteDir(ses, dirPath, callback) {
       let type = 'file';
       if (item.longname && item.longname[0] === 'd') type = 'dir';
       else if (item.longname && item.longname[0] === 'l') type = 'symlink';
-      return { name: item.filename, type, hidden: item.filename.startsWith('.') };
+      return { name: item.filename, type, link: type === 'symlink', hidden: item.filename.startsWith('.') };
     });
-    entries.sort((a, b) => {
-      if (a.type === 'dir' && b.type !== 'dir') return -1;
-      if (a.type !== 'dir' && b.type === 'dir') return 1;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    const finish = () => {
+      entries.sort((a, b) => {
+        if (a.type === 'dir' && b.type !== 'dir') return -1;
+        if (a.type !== 'dir' && b.type === 'dir') return 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+      if (p !== '/') entries.unshift({ name: '..', type: 'dir', hidden: false });
+      callback(entries, null);
+    };
+    // Resolve symlink targets: sftp.stat follows the link, so a dir-symlink
+    // (e.g. treeweb -> /data2/treeweb) becomes a navigable 'dir' instead of a file.
+    const links = entries.filter(e => e.type === 'symlink');
+    if (links.length === 0) { finish(); return; }
+    let pending = links.length;
+    links.forEach(e => {
+      ses.sftpSession.stat(p.replace(/\/+$/, '') + '/' + e.name, (serr, st) => {
+        try { if (!serr && st && st.isDirectory()) e.type = 'dir'; } catch {}
+        if (--pending === 0) finish();
+      });
     });
-    if (p !== '/') entries.unshift({ name: '..', type: 'dir', hidden: false });
-    callback(entries, null);
   });
 }
 
@@ -890,7 +909,11 @@ function formatCell(entry, selected, colWidth) {
   const maxW = Math.max(1, colWidth - 4);
   const marked = panel.marked.has(entry.name);
   let icon, color;
-  if (entry.type === 'dir') { icon = '>'; color = '{cyan-fg}{bold}'; }
+  if (entry.type === 'dir') {
+    // '~' marks a directory reached through a symlink (e.g. treeweb → /data2/treeweb)
+    icon = entry.link ? '~' : '>';
+    color = '{cyan-fg}{bold}';
+  }
   else if (entry.type === 'symlink') { icon = '~'; color = '{magenta-fg}'; }
   else { icon = ' '; color = '{white-fg}'; }
 
