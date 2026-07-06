@@ -46,7 +46,7 @@ Press `Del` in the `F12` menu to remove a workspace.
 - **F5 File paste** — Copy files in Explorer (Ctrl+C) → paste in TreeRU with `F5`. Works with SSH remote folders
 - **SSH/SFTP remote browsing** — Press `F10` to connect to servers from your `~/.ssh/config` (SSH key auth required)
 - **Clipboard image auto-save** — Take a screenshot and it auto-saves to the current folder. Works with Windows 11 Print Screen, Snipaste, Win+Shift+S, and more
-- **Multiple instances** — Run TreeRU in several panes/tabs at once. Screenshots are saved only by the instance you last interacted with, never duplicated
+- **Multiple instances** — Run TreeRU in several panes/tabs at once. Screenshots are saved only by the instance you last interacted with (marked with 📷 in the status bar), never duplicated
 - **Multi-path copy (Alt+Shift+C)** — Copy selected file paths (comma-separated). Handy for passing paths to AI CLI tools
 - **CJK filename support** — Correctly displays CJK (Korean, Japanese, Chinese) filenames
 - **Auto-refresh** — Automatically reflects local file changes
@@ -174,7 +174,7 @@ When you copy a screenshot to the clipboard, TreeRU automatically detects it and
 - Local folder: saved immediately
 - SSH remote folder: auto-uploaded via SFTP
 - Delay: ~1–2 seconds (varies by system)
-- With multiple TreeRU instances running, only the one you last interacted with saves the screenshot
+- With multiple TreeRU instances running, only the one you last interacted with saves the screenshot — it shows a 📷 marker in the status bar. To route a screenshot to a specific instance, click it (or press any key in it) first
 
 ## Made by
 

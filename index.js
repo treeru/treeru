@@ -623,6 +623,8 @@ function renderHeader() {
   headerBar.setContent(`{bold}{cyan-fg}${title}{/}${' '.repeat(pad)}${rightFull}`);
 }
 
+let shotShown = false; // whether the 📷 active-instance marker is currently displayed
+
 function renderStatus() {
   const entry = panel.entries[panel.selectedIndex];
   let left = '';
@@ -633,8 +635,11 @@ function renderStatus() {
       left = ` ${getFileInfo(entry.name, path.join(panel.cwd, entry.name))}`;
     }
   }
+  // 📷 = this instance saves clipboard screenshots (the one you last interacted with)
+  shotShown = isWindows && isActiveInstance();
+  const shot = shotShown ? '📷 ' : '';
   const markedInfo = panel.marked.size > 0 ? `[${panel.marked.size} selected] ` : '';
-  const idx = panel.entries.length > 0 ? `${markedInfo}${panel.selectedIndex + 1}/${panel.entries.length}` : '0/0';
+  const idx = panel.entries.length > 0 ? `${shot}${markedInfo}${panel.selectedIndex + 1}/${panel.entries.length}` : `${shot}0/0`;
   const pad = Math.max(0, screen.width - left.length - idx.length - 1);
   statusBar.setContent(`${left}${' '.repeat(pad)}${idx} `);
 }
@@ -1232,10 +1237,11 @@ function startClipboardWatcher() {
         log('clipboard | changed, seq:', seq);
         // Only the instance that last received user input saves the screenshot;
         // the per-seq claim lock prevents duplicate saves across instances.
-        if (!isActiveInstance()) return;
-        if (!claimClipSeq(seq)) return;
-        saveClipboardImage();
+        if (isActiveInstance() && claimClipSeq(seq)) saveClipboardImage();
       }
+
+      // Keep the 📷 marker fresh when another instance takes over (≤1.5s lag)
+      if (!dialogOpen && isActiveInstance() !== shotShown) render();
     });
   }, 1500);
 }
