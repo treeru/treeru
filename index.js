@@ -119,6 +119,11 @@ function loadSessions() {
 
 const isWindows = process.platform === 'win32';
 
+// Escape blessed markup in any filesystem-derived string (file/folder names,
+// paths, SSH hostnames) before it goes into tags:true content. Without this a
+// name containing "{" is parsed as a (broken) style tag and corrupts the screen.
+function esc(s) { return String(s == null ? '' : s).replace(/\{/g, '{open}'); }
+
 // ── User Config ─────────────────────────────────────────
 const CONFIG_FILE = path.join(os.homedir(), '.treeru_config.json');
 function loadConfig() {
@@ -169,7 +174,7 @@ function registerClaudeWorkspace() {
     showMessage(`Already registered: ${path.basename(entry.path)}`);
     return;
   }
-  confirmDialog(`Register Claude workspace?\n {bold}${path.basename(entry.path)}{/}  (${wsLabel(entry)})`, () => {
+  confirmDialog(`Register Claude workspace?\n {bold}${esc(path.basename(entry.path))}{/}  (${esc(wsLabel(entry))})`, () => {
     const fresh = loadClaudeWorkspaces();
     if (findWorkspace(fresh, entry) === -1) {
       fresh.push(entry);
@@ -283,7 +288,7 @@ function bmMenuItem(bm) {
     : (path.basename(bm.path) || bm.path);
   const tag = bm.type === 'remote' ? `${bm.host}:${base}` : base;
   const full = bm.type === 'remote' ? `${bm.host}:${bm.path}` : bm.path;
-  return `  ★ ${tag}   {#9BA3B4-fg}(${full}){/}`;
+  return `  ★ ${esc(tag)}   {#9BA3B4-fg}(${esc(full)}){/}`;
 }
 
 function addCurrentBookmark(silent) {
@@ -450,6 +455,9 @@ function connectSFTP(ses, alias, callback) {
   if (!privateKey) { callback(new Error('No SSH key found')); return; }
 
   const conn = new SSHClient();
+  // Track the socket immediately so disconnectSFTP can tear it down even if the
+  // tab is closed while still connecting (otherwise the socket leaks forever).
+  ses.sftpConn = conn;
   let hostKeyMismatch = false;
   conn.on('ready', () => {
     conn.sftp((err, sftp) => {
@@ -558,12 +566,24 @@ function isWide(code) {
     (code >= 0xFFE0 && code <= 0xFFE6) || (code >= 0x20000 && code <= 0x2FA1F) ||
     (code >= 0x1F000 && code <= 0x1FBFF);
 }
-function strWidth(s) { let w = 0; for (const c of s) w += isWide(c.codePointAt(0)) ? 2 : 1; return w; }
+// Zero-width: combining marks, ZWJ, variation selectors (VS16 etc), BOM/ZWSP —
+// these attach to the previous glyph and must not add column width.
+function isZeroWidth(code) {
+  return (code >= 0x0300 && code <= 0x036F) || code === 0x200B || code === 0x200C ||
+    code === 0x200D || (code >= 0xFE00 && code <= 0xFE0F) || code === 0xFEFF ||
+    (code >= 0x1AB0 && code <= 0x1AFF) || (code >= 0x20D0 && code <= 0x20FF);
+}
+function strWidth(s) {
+  let w = 0;
+  for (const c of s) { const cp = c.codePointAt(0); if (isZeroWidth(cp)) continue; w += isWide(cp) ? 2 : 1; }
+  return w;
+}
 function padW(s, tw) { const w = strWidth(s); return w >= tw ? s : s + ' '.repeat(tw - w); }
 function truncW(s, tw) {
   let w = 0, i = 0;
   for (const c of s) {
-    const cw = isWide(c.codePointAt(0)) ? 2 : 1;
+    const cp = c.codePointAt(0);
+    const cw = isZeroWidth(cp) ? 0 : (isWide(cp) ? 2 : 1);
     if (w + cw > tw - 1) return s.slice(0, i) + '…';
     w += cw; i += c.length;
   }
@@ -634,6 +654,7 @@ function renderTabBar() {
   sessions.forEach((s, i) => {
     const label = tabLabel(s, i);
     const w = strWidth(label);
+    const safe = esc(label);
     tabHits.push({ x0: x, x1: x + w - 1, idx: i });
     const remote = s.remoteMode || s.pendingRemote;
     if (i === activeIdx) {
@@ -641,11 +662,11 @@ function renderTabBar() {
       // Deep bg (not bright) so white stays high-contrast; bold-black on a bright bg
       // gets brightened to gray by some terminals, so we avoid dark text entirely.
       const bg = remote ? '#1F7A86' : '#9A6E14';
-      out += `{white-fg}{${bg}-bg}{bold}${label}{/}`;
+      out += `{white-fg}{${bg}-bg}{bold}${safe}{/}`;
     } else {
       // Inactive tab: light text on a dark chip so each tab reads as a distinct button
       const fg = remote ? '#7FD3DE' : '#C8C8C8';
-      out += `{${fg}-fg}{#2A2A3E-bg}${label}{/}`;
+      out += `{${fg}-fg}{#2A2A3E-bg}${safe}{/}`;
     }
     out += '{#10101E-bg} {/}'; // gap between tabs (matches bar background)
     x += w + 1;
@@ -755,18 +776,18 @@ function showNewTabDialog() {
   const hereLabel = base.remoteMode ? `${base.remoteHost}:${base.remoteCwd}` : base.cwd;
   const bmCount = loadBookmarks().length;
   const rows = [
-    { label: `  📁 Duplicate current tab  {#9BA3B4-fg}(${hereLabel}){/}`, onSelect: () => {
+    { label: `  📁 Duplicate current tab  {#9BA3B4-fg}(${esc(hereLabel)}){/}`, onSelect: () => {
       if (base.remoteMode) {
         const s = newSession(os.homedir());
         s.pendingRemote = { host: base.remoteHost, path: base.remoteCwd };
         addSession(s); activatePendingRemote();
       } else addSession(newSession(base.cwd));
     } },
-    { label: `  🏠 Local home  {#9BA3B4-fg}(${os.homedir()}){/}`, onSelect: () => addSession(newSession(os.homedir())) },
+    { label: `  🏠 Local home  {#9BA3B4-fg}(${esc(os.homedir())}){/}`, onSelect: () => addSession(newSession(os.homedir())) },
     { label: `  ★ Bookmarks ▸  {#9BA3B4-fg}(${bmCount}){/}`, onSelect: () => showBookmarkFolder() },
     ...hosts.map(h => {
       const info = getSSHInfo(h);
-      return { label: `  🔗 ${h}  {#9BA3B4-fg}(${info.username}@${info.host}){/}`, onSelect: () => {
+      return { label: `  🔗 ${esc(h)}  {#9BA3B4-fg}(${esc(info.username)}@${esc(info.host)}){/}`, onSelect: () => {
         const s = newSession(os.homedir());
         s.pendingRemote = { host: h, path: '.' };
         addSession(s); activatePendingRemote();
@@ -876,9 +897,10 @@ function formatCell(entry, selected, colWidth) {
   let display = entry.name;
   if (strWidth(display) > maxW) display = truncW(display, maxW);
   display = padW(display, maxW);
+  const cellW = 3 + strWidth(display); // visible width (before markup-escaping)
+  display = esc(display);
 
   const cellContent = ` ${icon} ${display}`;
-  const cellW = 3 + strWidth(display);
   const padLen = Math.max(0, colWidth - cellW);
 
   if (selected && marked) {
@@ -944,7 +966,7 @@ function renderPanel() {
   // Label
   let cwd = panel.cwd;
   if (cwd.length > iw - 4) cwd = '…' + cwd.slice(-(iw - 5));
-  fileBox.setLabel(` ${cwd} `);
+  fileBox.setLabel(` ${esc(cwd)} `);
 
   // Build grid: entries flow top-to-bottom, then left-to-right
   const lines = [];
@@ -971,7 +993,7 @@ function renderHeader() {
   const title = PKG_VERSION ? `  TreeRU v${PKG_VERSION} (${APP_VERSION})` : `  TreeRU v${APP_VERSION}`;
   let right = '';
   if (panel.remoteMode) {
-    right = `{#56B6C2-fg}[ SSH: ${panel.remoteHost} ]{/} `;
+    right = `{#56B6C2-fg}[ SSH: ${esc(panel.remoteHost)} ]{/} `;
   } else {
     const hostCount = Object.keys(sshConfig).length;
     right = hostCount > 0 ? `{${C.dim}-fg}${hostCount} SSH hosts{/} ` : '';
@@ -999,7 +1021,7 @@ function renderStatus() {
   const markedInfo = panel.marked.size > 0 ? `[${panel.marked.size} selected] ` : '';
   const idx = panel.entries.length > 0 ? `${shot}${markedInfo}${panel.selectedIndex + 1}/${panel.entries.length}` : `${shot}0/0`;
   const pad = Math.max(0, screen.width - left.length - idx.length - 1);
-  statusBar.setContent(`${left}${' '.repeat(pad)}${idx} `);
+  statusBar.setContent(`${esc(left)}${' '.repeat(pad)}${idx} `);
 }
 
 function renderFnBar() {
@@ -1127,7 +1149,7 @@ function showMessage(msg) {
     valign: 'middle',
     align: 'center',
     style: { border: { fg: C.select }, bg: C.header, fg: C.fg },
-    content: msg,
+    content: esc(msg), // callers pass plain text (filenames/errors), never markup
   });
   screen.render();
   setTimeout(() => { m.destroy(); screen.alloc(); render(); }, 1500);
@@ -1192,8 +1214,11 @@ function showSSHMenu() {
 function connectToSSH(alias) {
   log('connectToSSH | alias:', alias);
   const ses = cur();
+  if (ses._connecting) return; // guard against a second connect racing on the same tab
+  ses._connecting = true;
   showMessage(`Connecting to ${alias}...`);
   connectSFTP(ses, alias, (err) => {
+    ses._connecting = false;
     if (err) {
       showMessage(`SSH failed: ${err.message}`);
       return;
@@ -1320,7 +1345,9 @@ function openEntry() {
   if (entry.type === 'dir') navigate(fp);
   else if (isViewable(entry.name)) openViewer(fp, entry.name);
   else if (isImageFile(entry.name)) {
-    require('child_process').exec(`start "" "${fp}"`);
+    // Open via explorer.exe (not cmd `start`), so a filename with %..% or ! isn't
+    // treated as a cmd variable/expansion.
+    require('child_process').execFile('explorer.exe', [fp], () => {});
   }
 }
 
@@ -1382,7 +1409,7 @@ function openViewer(fp, name) {
     inputOnFocus: false,
     scrollbar: { ch: '█', style: { fg: 'gray' } },
     style: { border: { fg: C.borderHi }, bg: 'black', fg: 'white' },
-    label: ` ${name} (${lines.length} lines) `,
+    label: ` ${esc(name)} (${lines.length} lines) `,
   });
 
   // Plain text content with line numbers
@@ -1479,8 +1506,9 @@ function copyTextToClipboard(text, cb) {
 // Put actual files (not text) on the Windows clipboard — paste with Ctrl+V in Explorer or F5 in another tab
 function copyFilesToClipboard(paths, cb) {
   if (!isWindows) { cb(new Error('unsupported')); return; }
+  // -LiteralPath (not -Path) so filenames with [ ] brackets aren't treated as wildcards
   const list = paths.map(p => `'${p.replace(/'/g, "''")}'`).join(',');
-  execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Path ${list}`], (err) => cb(err));
+  execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -LiteralPath ${list}`], (err) => cb(err));
 }
 
 function uniquePath(dir, name) {
@@ -1540,7 +1568,11 @@ function downloadSelected() {
     }
     const name = files[i++];
     if (!ses.sftpSession) { errs.push('No SFTP session'); next(); return; }
-    const local = uniquePath(destDir, name);
+    // Harden against a hostile server returning names like "..\..\Startup\x.bat":
+    // the local target is built ONLY from the basename, never the server string.
+    const safeName = path.basename(name.replace(/[\\/]+/g, '/'));
+    if (!safeName || safeName === '.' || safeName === '..') { errs.push('bad name: ' + name); next(); return; }
+    const local = uniquePath(destDir, safeName);
     ses.sftpSession.fastGet(ses.remoteCwd + '/' + name, local, (err) => {
       if (err) errs.push(err.message); else saved.push(local);
       next();
@@ -1549,42 +1581,69 @@ function downloadSelected() {
   next();
 }
 
-// Shared by F5 clipboard paste and drag&drop: copy local files into the current tab
+// Pick a non-colliding remote filename ("name (1).ext", ...) then run cb(finalName)
+function remoteUniqueName(ses, name, cb) {
+  const ext = path.extname(name), base = path.basename(name, ext);
+  const tryName = (n, i) => {
+    ses.sftpSession.stat(ses.remoteCwd + '/' + n, (err) => {
+      if (err) return cb(n);            // stat failed → name is free
+      tryName(`${base} (${i})${ext}`, i + 1); // exists → try next
+    });
+  };
+  tryName(name, 1);
+}
+
+// Shared by F5 clipboard paste and drag&drop: copy local files into the current tab.
+// Never overwrites an existing file (auto-renames), and skips folders with a notice.
 function transferFilesToCurrent(files) {
   const ses = cur();
+  const dirs = files.filter(f => { try { return fs.statSync(f).isDirectory(); } catch { return false; } });
+  const list = files.filter(f => !dirs.includes(f));
+  if (list.length === 0) { showMessage(dirs.length ? 'Folders are not supported — files only' : 'Nothing to paste'); return; }
+  const note = dirs.length ? `, ${dirs.length} folder(s) skipped` : '';
   let done = 0, failed = 0;
-  files.forEach(src => {
+  const tick = () => {
+    if (done + failed < list.length) return;
+    if (ses.remoteMode) {
+      showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : '') + note + ` → ${ses.remoteHost}`);
+      refreshRemote(ses);
+    } else {
+      showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : '') + note);
+      if (ses === cur()) render();
+    }
+  };
+  list.forEach(src => {
     const name = path.basename(src);
     if (ses.remoteMode && ses.sftpSession) {
-      ses.sftpSession.fastPut(src, ses.remoteCwd + '/' + name, (ue) => {
-        if (ue) failed++; else done++;
-        if (done + failed === files.length) {
-          showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : '') + ` → ${ses.remoteHost}`);
-          refreshRemote(ses);
-        }
+      remoteUniqueName(ses, name, (finalName) => {
+        ses.sftpSession.fastPut(src, ses.remoteCwd + '/' + finalName, (ue) => {
+          if (ue) failed++; else done++;
+          tick();
+        });
       });
     } else {
-      try { fs.copyFileSync(src, path.join(ses.cwd, name)); done++; } catch { failed++; }
-      if (done + failed === files.length) {
-        showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : ''));
-        render();
-      }
+      try { fs.copyFileSync(src, uniquePath(ses.cwd, name)); done++; } catch { failed++; }
+      tick();
     }
   });
 }
 
 function hasBadPath(name) {
-  return !name || name.includes('..') || name.includes('/') || name.includes('\\');
+  // Reject path separators and the special "." / ".." entries, but allow ".." as a
+  // substring of a legit name like "2024..2025" or "file..bak".
+  return !name || name === '.' || name === '..' || name.includes('/') || name.includes('\\');
 }
 
 function makeDirectory() {
   if (panel.remoteMode) {
+    const ses = cur(); // capture: user may switch tabs before the SFTP round-trip returns
     inputDialog('New folder name (remote):', '', (name) => {
       if (hasBadPath(name)) { showMessage('Invalid name'); return; }
-      const rp = panel.remoteCwd + '/' + name;
-      panel.sftpSession.mkdir(rp, (err) => {
+      if (!ses.sftpSession) { showMessage('SSH connection lost'); return; }
+      const rp = ses.remoteCwd + '/' + name;
+      ses.sftpSession.mkdir(rp, (err) => {
         if (err) showMessage('Failed: ' + err.message);
-        else refreshRemote(cur());
+        else refreshRemote(ses);
       });
     });
     return;
@@ -1607,7 +1666,7 @@ function deleteEntry() {
     names.push(entry.name);
   }
   if (names.length === 0) return;
-  const label = names.length === 1 ? `"${names[0]}"` : `${names.length} items`;
+  const label = names.length === 1 ? `"${esc(names[0])}"` : `${names.length} items`;
   if (panel.remoteMode) {
     const ses = cur();
     confirmDialog(`Delete ${label}? (permanent)`, () => deleteRemoteEntries(ses, names));
@@ -1684,18 +1743,20 @@ function permanentDelete(targets) {
 function renameEntry() {
   const entry = panel.entries[panel.selectedIndex];
   if (!entry || entry.name === '..') return;
+  const ses = cur(); // capture: op targets this tab even if the user switches mid-dialog
   inputDialog('Rename to:', entry.name, (newName) => {
     if (hasBadPath(newName)) { showMessage('Invalid name'); return; }
-    if (panel.remoteMode) {
-      panel.sftpSession.rename(panel.remoteCwd + '/' + entry.name, panel.remoteCwd + '/' + newName, (err) => {
+    if (ses.remoteMode) {
+      if (!ses.sftpSession) { showMessage('SSH connection lost'); return; }
+      ses.sftpSession.rename(ses.remoteCwd + '/' + entry.name, ses.remoteCwd + '/' + newName, (err) => {
         if (err) showMessage('Rename failed: ' + err.message);
-        else refreshRemote(cur());
+        else refreshRemote(ses);
       });
       return;
     }
     try {
       if (watcher) { try { watcher.close(); } catch {} watcher = null; }
-      fs.renameSync(path.join(panel.cwd, entry.name), path.join(panel.cwd, newName));
+      fs.renameSync(path.join(ses.cwd, entry.name), path.join(ses.cwd, newName));
       watchDir();
       render();
     } catch (e) { watchDir(); showMessage('Rename failed: ' + e.message); }
@@ -1819,9 +1880,11 @@ function handleDropChar(ch) {
     lastPrintTs = now; lastPrintCh = ch;
     return true;
   }
-  // burst start: two DIFFERENT printable chars within 35ms
-  // (same-char sequences are key autorepeat, e.g. holding j/k — never treated as a drop)
-  if (now - lastPrintTs < 35 && ch !== lastPrintCh && lastPrintCh) {
+  // burst start: two printable chars within 12ms. Human typing is never this fast
+  // (world-record ~14 chars/s ≈ 70ms apart), so a real command key like T/W/D is
+  // never mistaken for a drop; only a paste/OS file-drop (~1ms/char) qualifies.
+  // 35ms was too loose and swallowed genuine keystrokes (the "T did nothing" bug).
+  if (now - lastPrintTs < 12 && lastPrintCh) {
     dropBuf = lastPrintCh + ch;
     dropTimer = setTimeout(evalDrop, 120);
     lastPrintTs = now; lastPrintCh = ch;
