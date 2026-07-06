@@ -11,6 +11,9 @@ const APP_VERSION = (() => {
     return line.split(' - ')[0].trim();
   } catch { return '0'; }
 })();
+const PKG_VERSION = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version || ''; } catch { return ''; }
+})();
 const { Client: SSHClient } = require('ssh2');
 const { readFileSync, appendFileSync } = require('fs');
 
@@ -44,22 +47,75 @@ const C = {
 };
 
 // ── Stаte ───────────────────────────────────────────────
-const panel = {
-  cwd: process.cwd(),
-  entries: [],
-  selectedIndex: 0,
-  scrollOffset: 0,
-  marked: new Set(), // multi-select: stores entry names
-};
+// Tabs (sessions): each tab owns an independent panel state + SSH connection.
+function newSession(cwd) {
+  return {
+    cwd,
+    entries: [],
+    selectedIndex: 0,
+    scrollOffset: 0,
+    marked: new Set(), // multi-select: stores entry names
+    // ── Remоte (SSH) State ──────────────────────────────
+    remoteMode: false,
+    remoteHost: '',
+    remoteUser: '',
+    remoteCwd: '',
+    sftpConn: null,
+    sftpSession: null,
+    pendingRemote: null, // { host, path } — restored/queued SSH tab, connects on activation
+    _connecting: false,
+    _grid: null,
+  };
+}
+let sessions = [newSession(process.cwd())];
+let activeIdx = 0;
+function cur() { return sessions[activeIdx]; }
+// `panel` transparently proxies the ACTIVE session, so all synchronous UI code
+// below operates on whichever tab is selected. Async flows (SFTP callbacks,
+// screenshot saves) capture `const ses = cur()` up front instead, so a tab
+// switch mid-operation can never corrupt another tab.
+const panel = new Proxy({}, {
+  get: (_, k) => cur()[k],
+  set: (_, k, v) => { cur()[k] = v; return true; },
+});
 let dialogOpen = false;
 
-// ── Remоte (SSH) State ──────────────────────────────────
-let remoteMode = false;
-let remoteHost = '';
-let remoteUser = '';
-let remoteCwd = '';
-let sftpConn = null;
-let sftpSession = null;
+// ── Session Persistence (zellij-style restore) ──────────
+const SESSIONS_FILE = path.join(os.homedir(), '.treeru_sessions.json');
+
+function saveSessions() {
+  try {
+    const tabs = sessions.map(s => {
+      if (s.remoteMode) return { type: 'remote', host: s.remoteHost, path: s.remoteCwd };
+      if (s.pendingRemote) return { type: 'remote', host: s.pendingRemote.host, path: s.pendingRemote.path };
+      return { type: 'local', cwd: s.cwd };
+    });
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify({ active: activeIdx, tabs }, null, 2));
+  } catch {}
+}
+
+function loadSessions() {
+  try {
+    const data = JSON.parse(readFileSync(SESSIONS_FILE, 'utf8'));
+    const tabs = (Array.isArray(data.tabs) ? data.tabs : []).map(t => {
+      if (t && t.type === 'remote' && t.host) {
+        const s = newSession(os.homedir());
+        s.pendingRemote = { host: t.host, path: t.path || '.' };
+        return s;
+      }
+      if (t && t.type === 'local' && t.cwd) {
+        try { fs.accessSync(t.cwd, fs.constants.R_OK); return newSession(t.cwd); } catch { return null; }
+      }
+      return null;
+    }).filter(Boolean);
+    if (tabs.length > 0) {
+      sessions = tabs;
+      activeIdx = Math.min(Math.max(0, data.active | 0), tabs.length - 1);
+      return true;
+    }
+  } catch {}
+  return false;
+}
 
 const isWindows = process.platform === 'win32';
 
@@ -105,8 +161,8 @@ function wsMenuItem(ws) {
 }
 
 function registerClaudeWorkspace() {
-  const entry = remoteMode
-    ? { type: 'remote', host: remoteHost, path: remoteCwd }
+  const entry = panel.remoteMode
+    ? { type: 'remote', host: panel.remoteHost, path: panel.remoteCwd }
     : { type: 'local', path: panel.cwd };
   const list = loadClaudeWorkspaces();
   if (findWorkspace(list, entry) !== -1) {
@@ -249,7 +305,7 @@ const HOST_KEYS_FILE = path.join(os.homedir(), '.treeru_hosts.json');
 function loadHostKeys() { try { return JSON.parse(readFileSync(HOST_KEYS_FILE, 'utf8')); } catch { return {}; } }
 function saveHostKeys(k) { try { fs.writeFileSync(HOST_KEYS_FILE, JSON.stringify(k, null, 2)); } catch {} }
 
-function connectSFTP(alias, callback) {
+function connectSFTP(ses, alias, callback) {
   const info = getSSHInfo(alias);
   let keyPath = info.identityFile.replace(/^~/, os.homedir()).replace(/"/g, '');
   log('SFTP | connect', alias, info.host, info.port, info.username, keyPath);
@@ -268,10 +324,10 @@ function connectSFTP(alias, callback) {
   conn.on('ready', () => {
     conn.sftp((err, sftp) => {
       if (err) { callback(err); return; }
-      sftpConn = conn;
-      sftpSession = sftp;
-      remoteHost = alias;
-      remoteUser = info.username;
+      ses.sftpConn = conn;
+      ses.sftpSession = sftp;
+      ses.remoteHost = alias;
+      ses.remoteUser = info.username;
       callback(null);
     });
   });
@@ -283,9 +339,9 @@ function connectSFTP(alias, callback) {
   });
   conn.on('close', () => {
     log('SFTP | connection closed');
-    if (remoteMode) {
-      sftpConn = null;
-      sftpSession = null;
+    if (ses.sftpConn === conn) { // clear only if this session still owns this connection
+      ses.sftpConn = null;
+      ses.sftpSession = null;
     }
   });
   conn.connect({
@@ -306,10 +362,11 @@ function connectSFTP(alias, callback) {
   });
 }
 
-function disconnectSFTP() {
-  if (sftpConn) { try { sftpConn.end(); } catch {} }
-  sftpConn = null; sftpSession = null;
-  remoteMode = false; remoteHost = ''; remoteUser = ''; remoteCwd = '';
+function disconnectSFTP(ses) {
+  if (ses.sftpConn) { try { ses.sftpConn.end(); } catch {} }
+  ses.sftpConn = null; ses.sftpSession = null;
+  ses.remoteMode = false; ses.remoteHost = ''; ses.remoteUser = ''; ses.remoteCwd = '';
+  ses.pendingRemote = null;
 }
 
 // ── Directory Reading ───────────────────────────────────
@@ -335,11 +392,11 @@ function readLocalDir(dirPath) {
   }
 }
 
-function readRemoteDir(dirPath, callback) {
-  if (!sftpSession) { callback([], 'No SFTP session'); return; }
+function readRemoteDir(ses, dirPath, callback) {
+  if (!ses.sftpSession) { callback([], 'No SFTP session'); return; }
   const p = dirPath.replace(/\\/g, '/') || '/';
-  log('readRemoteDir |', p, 'host:', remoteHost);
-  sftpSession.readdir(p, (err, list) => {
+  log('readRemoteDir |', p, 'host:', ses.remoteHost);
+  ses.sftpSession.readdir(p, (err, list) => {
     if (err) {
       log('readRemoteDir | ERROR:', err.message);
       callback([{ name: '..', type: 'dir', hidden: false }], err.message);
@@ -392,9 +449,15 @@ const headerBar = blessed.box({
   tags: true, style: { bg: C.header, fg: 'white', bold: true },
 });
 
+// Tab bar (one line under the header)
+const tabBar = blessed.box({
+  parent: screen, top: 1, left: 0, width: '100%', height: 1,
+  tags: true, style: { bg: '#10101E' },
+});
+
 // Main file panel (full width)
 const fileBox = blessed.box({
-  parent: screen, top: 1, left: 0, width: '100%', height: '100%-5',
+  parent: screen, top: 2, left: 0, width: '100%', height: '100%-6',
   border: { type: 'line' }, label: ' TreeRU ', tags: true,
   scrollable: true, mouse: true, clickable: true,
   style: { border: { fg: C.border }, label: { fg: C.borderHi, bold: true } },
@@ -417,6 +480,122 @@ const pathBar = blessed.box({
   parent: screen, bottom: 0, left: 0, width: '100%', height: 1,
   tags: false, style: { bg: 'black', fg: 'white' },
 });
+
+// ── Tabs ────────────────────────────────────────────────
+let tabHits = []; // clickable x-ranges on the tab bar
+
+function tabLabel(s, i) {
+  let name;
+  if (s.remoteMode) {
+    const base = (s.remoteCwd || '/').split('/').filter(Boolean).pop() || '/';
+    name = `${s.remoteHost}:${base}`;
+  } else if (s.pendingRemote) {
+    name = `${s.pendingRemote.host}:…`;
+  } else {
+    name = path.basename(s.cwd) || s.cwd;
+  }
+  if (strWidth(name) > 20) name = truncW(name, 20);
+  return ` ${i + 1}:${name} `;
+}
+
+function renderTabBar() {
+  tabHits = [];
+  let x = 0, out = '';
+  sessions.forEach((s, i) => {
+    const label = tabLabel(s, i);
+    const w = strWidth(label);
+    tabHits.push({ x0: x, x1: x + w - 1, idx: i });
+    const remote = s.remoteMode || s.pendingRemote;
+    if (i === activeIdx) out += `{black-fg}{${remote ? '#56B6C2' : '#87AFD7'}-bg}{bold}${label}{/}`;
+    else out += `{${remote ? '#56B6C2' : '#87AFD7'}-fg}${label}{/}`;
+    out += '{#444444-fg}│{/}';
+    x += w + 1;
+  });
+  tabHits.push({ x0: x, x1: x + 2, idx: 'new' });
+  out += '{#E5C07B-fg}{bold} + {/}';
+  tabBar.setContent(out);
+}
+
+function addSession(ses) {
+  sessions.push(ses);
+  activeIdx = sessions.length - 1;
+  watchDir();
+  saveSessions();
+  render();
+}
+
+function switchTab(idx) {
+  if (idx < 0 || idx >= sessions.length || idx === activeIdx) return;
+  activeIdx = idx;
+  watchDir();
+  saveSessions();
+  render();
+  activatePendingRemote(); // restored SSH tabs connect lazily, on first activation
+}
+
+function closeTab(idx) {
+  if (sessions.length <= 1) { showMessage('Last tab — cannot close'); return; }
+  const [closed] = sessions.splice(idx, 1);
+  disconnectSFTP(closed);
+  if (activeIdx >= sessions.length) activeIdx = sessions.length - 1;
+  else if (idx < activeIdx) activeIdx--;
+  watchDir();
+  saveSessions();
+  render();
+}
+
+// New-tab picker: duplicate current, local home, or connect straight to an SSH host
+function showNewTabDialog() {
+  const hosts = Object.keys(sshConfig).filter(h => !h.includes('*') && !h.includes('?'));
+  const base = cur();
+  const hereLabel = base.remoteMode ? `${base.remoteHost}:${base.remoteCwd}` : base.cwd;
+  const items = [
+    `  📁 Duplicate current tab  (${hereLabel})`,
+    `  🏠 Local home  (${os.homedir()})`,
+    ...hosts.map(h => { const info = getSSHInfo(h); return `  🔗 ${h}  (${info.username}@${info.host})`; }),
+  ];
+  dialogOpen = true;
+  const listHeight = Math.min(items.length + 2, screen.height - 6);
+  const box = blessed.box({
+    parent: screen, top: 'center', left: 'center',
+    width: '60%', height: listHeight + 2,
+    border: { type: 'line' }, tags: true,
+    style: { border: { fg: '#E5C07B' }, bg: C.header, fg: C.fg },
+    label: ' New Tab ',
+  });
+  const list = blessed.list({
+    parent: box, top: 0, left: 1, right: 1, height: listHeight,
+    tags: false, mouse: true, keys: true,
+    style: { fg: 'white', selected: { fg: 'black', bg: '#E5C07B' } },
+    items,
+  });
+  const close = () => { list.removeAllListeners(); box.destroy(); screen.alloc(); };
+  list.on('select', (item, idx) => {
+    close();
+    dialogOpen = false;
+    process.nextTick(() => {
+      if (idx === 0) {
+        if (base.remoteMode) {
+          const s = newSession(os.homedir());
+          s.pendingRemote = { host: base.remoteHost, path: base.remoteCwd };
+          addSession(s);
+          activatePendingRemote();
+        } else addSession(newSession(base.cwd));
+      } else if (idx === 1) {
+        addSession(newSession(os.homedir()));
+      } else {
+        const s = newSession(os.homedir());
+        s.pendingRemote = { host: hosts[idx - 2], path: '.' };
+        addSession(s);
+        activatePendingRemote();
+      }
+    });
+  });
+  list.on('cancel', () => { close(); dialogOpen = false; render(); });
+  list.key('escape', () => { close(); dialogOpen = false; render(); });
+  list.focus();
+  screen.render();
+}
 
 // ── File‍ Icons ──────────────────────────────────────────
 function getFileIcon(name) {
@@ -527,7 +706,7 @@ function formatCell(entry, selected, colWidth) {
     return `{black-fg}{yellow-bg}${cellContent}${' '.repeat(padLen)}{/}`;
   }
   if (selected) {
-    const bg = remoteMode ? '{#56B6C2-bg}' : '{green-bg}';
+    const bg = panel.remoteMode ? '{#56B6C2-bg}' : '{green-bg}';
     return `{black-fg}${bg}${cellContent}${' '.repeat(padLen)}{/}`;
   }
   if (marked) {
@@ -537,7 +716,7 @@ function formatCell(entry, selected, colWidth) {
 }
 
 function getFileInfo(name, fp) {
-  if (remoteMode) return name;
+  if (panel.remoteMode) return name;
   try {
     const s = fs.statSync(fp);
     const sz = s.isDirectory() ? '<DIR>' : formatSize(s.size);
@@ -555,7 +734,7 @@ function formatSize(b) {
 
 // ── Rеndering ───────────────────────────────────────────
 function renderPanel() {
-  if (remoteMode) {
+  if (panel.remoteMode) {
     fileBox.style.border.fg = C.remote;
     fileBox.style.label.fg = C.remote;
   } else {
@@ -563,7 +742,7 @@ function renderPanel() {
     fileBox.style.label.fg = C.borderHi;
   }
 
-  if (!remoteMode) panel.entries = readLocalDir(panel.cwd);
+  if (!panel.remoteMode) panel.entries = readLocalDir(panel.cwd);
 
   if (panel.selectedIndex >= panel.entries.length) panel.selectedIndex = panel.entries.length - 1;
   if (panel.selectedIndex < 0) panel.selectedIndex = 0;
@@ -610,10 +789,10 @@ function renderPanel() {
 }
 
 function renderHeader() {
-  const title = `  TreeRU v${APP_VERSION}`;
+  const title = PKG_VERSION ? `  TreeRU v${PKG_VERSION} (${APP_VERSION})` : `  TreeRU v${APP_VERSION}`;
   let right = '';
-  if (remoteMode) {
-    right = `{#56B6C2-fg}[ SSH: ${remoteHost} ]{/} `;
+  if (panel.remoteMode) {
+    right = `{#56B6C2-fg}[ SSH: ${panel.remoteHost} ]{/} `;
   } else {
     const hostCount = Object.keys(sshConfig).length;
     right = hostCount > 0 ? `{${C.dim}-fg}${hostCount} SSH hosts{/} ` : '';
@@ -629,7 +808,7 @@ function renderStatus() {
   const entry = panel.entries[panel.selectedIndex];
   let left = '';
   if (entry && entry.name !== '..') {
-    if (remoteMode) {
+    if (panel.remoteMode) {
       left = ` ${entry.name}`;
     } else {
       left = ` ${getFileInfo(entry.name, path.join(panel.cwd, entry.name))}`;
@@ -655,19 +834,22 @@ function renderFnBar() {
     '{white-fg}{bold}Del{/}{#87AFD7-fg} Recycle{/}',
   ];
   const row2 = [
+    '{white-fg}{bold}T{/}{#E5C07B-fg} NewTab{/}',
+    '{white-fg}{bold}W{/}{#E5C07B-fg} CloseTab{/}',
+    '{white-fg}{bold}Tab{/}{#E5C07B-fg} Switch{/}',
     '{white-fg}{bold}F9{/}{#E5C07B-fg} Claude+{/}',
     '{white-fg}{bold}F10{/}{#87AFD7-fg} SSH{/}',
     '{white-fg}{bold}F12{/}{#E5C07B-fg} Claude{/}',
-    '{white-fg}{bold}F6{/}{#87AFD7-fg}/{/}{white-fg}{bold}Alt+Shift+C{/}{#87AFD7-fg} CopyPath{/}',
-    '{white-fg}{bold}PrtSc{/}{#87AFD7-fg}/{/}{white-fg}{bold}Win+Shift+S{/}{#87AFD7-fg} Screenshot{/}',
+    '{white-fg}{bold}F6{/}{#87AFD7-fg} CopyPath{/}',
+    '{white-fg}{bold}PrtSc{/}{#87AFD7-fg} Screenshot{/}',
   ];
   fnBar.setContent(` ${row1.join('  ')}\n ${row2.join('  ')}`);
 }
 
 function renderPathBar() {
   let prompt;
-  if (remoteMode) {
-    prompt = `${remoteUser}@${remoteHost}:${remoteCwd}>`;
+  if (panel.remoteMode) {
+    prompt = `${panel.remoteUser}@${panel.remoteHost}:${panel.remoteCwd}>`;
   } else {
     prompt = `${panel.cwd}>`;
   }
@@ -677,6 +859,7 @@ function renderPathBar() {
 function render() {
   renderPanel();
   renderHeader();
+  renderTabBar();
   renderStatus();
   renderFnBar();
   renderPathBar();
@@ -827,77 +1010,107 @@ function showSSHMenu() {
 
 function connectToSSH(alias) {
   log('connectToSSH | alias:', alias);
+  const ses = cur();
   showMessage(`Connecting to ${alias}...`);
-  connectSFTP(alias, (err) => {
+  connectSFTP(ses, alias, (err) => {
     if (err) {
       showMessage(`SSH failed: ${err.message}`);
       return;
     }
-    remoteMode = true;
+    ses.remoteMode = true;
     // Resolve home directory
-    sftpSession.realpath('.', (err2, homePath) => {
-      remoteCwd = err2 ? '/home/' + remoteUser : homePath;
-      refreshRemote();
+    ses.sftpSession.realpath('.', (err2, homePath) => {
+      ses.remoteCwd = err2 ? '/home/' + ses.remoteUser : homePath;
+      refreshRemote(ses, () => saveSessions());
     });
   });
 }
 
-function refreshRemote(callback) {
-  readRemoteDir(remoteCwd, (entries, err) => {
+// Connect a tab that was restored (or opened) as a queued SSH session
+function activatePendingRemote() {
+  const ses = cur();
+  if (!ses.pendingRemote || ses.remoteMode || ses._connecting) return;
+  const { host, path: rpath } = ses.pendingRemote;
+  ses._connecting = true;
+  showMessage(`Connecting to ${host}...`);
+  connectSFTP(ses, host, (err) => {
+    ses._connecting = false;
+    if (err) {
+      ses.pendingRemote = null;
+      ses.cwd = os.homedir();
+      showMessage(`SSH failed: ${err.message}`);
+      saveSessions();
+      if (ses === cur()) render();
+      return;
+    }
+    ses.pendingRemote = null;
+    ses.remoteMode = true;
+    const finish = () => refreshRemote(ses, () => saveSessions());
+    if (rpath && rpath !== '.') { ses.remoteCwd = rpath; finish(); }
+    else ses.sftpSession.realpath('.', (e2, hp) => { ses.remoteCwd = e2 ? '/home/' + ses.remoteUser : hp; finish(); });
+  });
+}
+
+function refreshRemote(ses, callback) {
+  readRemoteDir(ses, ses.remoteCwd, (entries, err) => {
     if (err) {
       log('refreshRemote | error:', err);
       if (callback) callback(err);
       return;
     }
-    panel.entries = entries;
-    panel.cwd = `${remoteUser}@${remoteHost}:${remoteCwd}`;
-    panel.selectedIndex = 0;
-    panel.scrollOffset = 0;
-    panel.marked.clear();
-    render();
+    ses.entries = entries;
+    ses.cwd = `${ses.remoteUser}@${ses.remoteHost}:${ses.remoteCwd}`;
+    ses.selectedIndex = 0;
+    ses.scrollOffset = 0;
+    ses.marked.clear();
+    if (ses === cur()) render();
     if (callback) callback(null);
   });
 }
 
 // ── Actions ─────────────────────────────────────────────
 function navigate(dir) {
-  if (remoteMode) {
-    const prevCwd = remoteCwd;
+  const ses = cur();
+  if (ses.remoteMode) {
+    const prevCwd = ses.remoteCwd;
     if (dir === '..') {
-      const parts = remoteCwd.split('/').filter(Boolean);
+      const parts = ses.remoteCwd.split('/').filter(Boolean);
       parts.pop();
-      remoteCwd = '/' + parts.join('/');
+      ses.remoteCwd = '/' + parts.join('/');
     } else {
-      remoteCwd = dir;
+      ses.remoteCwd = dir;
     }
-    log('navigate | remote:', prevCwd, '→', remoteCwd, 'host:', remoteHost);
+    log('navigate | remote:', prevCwd, '→', ses.remoteCwd, 'host:', ses.remoteHost);
 
     // Check if SFTP session is still alive
-    if (!sftpSession) {
+    if (!ses.sftpSession) {
       log('navigate | SFTP session lost!');
       showMessage('SSH connection​ lost');
-      disconnectSFTP();
-      panel.cwd = path.resolve(process.argv[2] || process.cwd());
+      disconnectSFTP(ses);
+      ses.cwd = path.resolve(process.argv[2] || process.cwd());
+      saveSessions();
       render();
       return;
     }
 
-    refreshRemote((err) => {
+    refreshRemote(ses, (err) => {
       if (err) {
         // Revert to previous directory on error
         log('navigate | readdir failed, reverting to:', prevCwd);
-        remoteCwd = prevCwd;
+        ses.remoteCwd = prevCwd;
         showMessage('Access denied: ' + dir);
-      }
+      } else saveSessions();
     });
     return;
   }
   try {
     fs.accessSync(dir, fs.constants.R_OK);
-    panel.cwd = path.resolve(dir);
-    panel.selectedIndex = 0;
-    panel.scrollOffset = 0;
-    panel.marked.clear();
+    ses.cwd = path.resolve(dir);
+    ses.selectedIndex = 0;
+    ses.scrollOffset = 0;
+    ses.marked.clear();
+    watchDir();
+    saveSessions();
     render();
   } catch {
     showMessage('Access denied: ' + dir);
@@ -907,15 +1120,15 @@ function navigate(dir) {
 function openEntry() {
   const entry = panel.entries[panel.selectedIndex];
   if (!entry) return;
-  log('openEntry |', entry.name, 'type:', entry.type, 'remote:', remoteMode, 'host:', remoteHost, 'remoteCwd:', remoteCwd);
-  if (remoteMode) {
+  log('openEntry |', entry.name, 'type:', entry.type, 'remote:', panel.remoteMode, 'host:', panel.remoteHost, 'panel.remoteCwd:', panel.remoteCwd);
+  if (panel.remoteMode) {
     if (entry.name === '..') {
-      log('openEntry | remote go up from:', remoteCwd);
+      log('openEntry | remote go up from:', panel.remoteCwd);
       navigate('..');
       return;
     }
     else if (entry.type === 'dir') {
-      const newPath = remoteCwd === '/' ? '/' + entry.name : remoteCwd.replace(/\/+$/, '') + '/' + entry.name;
+      const newPath = panel.remoteCwd === '/' ? '/' + entry.name : panel.remoteCwd.replace(/\/+$/, '') + '/' + entry.name;
       log('openEntry | remote path:', newPath);
       navigate(newPath);
     }
@@ -1046,14 +1259,14 @@ function copyPathToClipboard() {
     // Copy all marked files
     panel.entries.forEach(e => {
       if (panel.marked.has(e.name)) {
-        paths.push(remoteMode ? remoteCwd + '/' + e.name : path.join(panel.cwd, e.name));
+        paths.push(panel.remoteMode ? panel.remoteCwd + '/' + e.name : path.join(panel.cwd, e.name));
       }
     });
   } else {
     // Copy single selected file
     const entry = panel.entries[panel.selectedIndex];
     if (!entry || entry.name === '..') return;
-    paths.push(remoteMode ? remoteCwd + '/' + entry.name : path.join(panel.cwd, entry.name));
+    paths.push(panel.remoteMode ? panel.remoteCwd + '/' + entry.name : path.join(panel.cwd, entry.name));
   }
   copyTextToClipboard(paths.join(', '), (err) => {
     showMessage(err ? 'Copy failed' : `Copied ${paths.length} path(s)`);
@@ -1087,13 +1300,13 @@ function hasBadPath(name) {
 }
 
 function makeDirectory() {
-  if (remoteMode) {
+  if (panel.remoteMode) {
     inputDialog('New folder name (remote):', '', (name) => {
       if (hasBadPath(name)) { showMessage('Invalid name'); return; }
-      const rp = remoteCwd + '/' + name;
-      sftpSession.mkdir(rp, (err) => {
+      const rp = panel.remoteCwd + '/' + name;
+      panel.sftpSession.mkdir(rp, (err) => {
         if (err) showMessage('Failed: ' + err.message);
-        else refreshRemote();
+        else refreshRemote(cur());
       });
     });
     return;
@@ -1117,8 +1330,9 @@ function deleteEntry() {
   }
   if (names.length === 0) return;
   const label = names.length === 1 ? `"${names[0]}"` : `${names.length} items`;
-  if (remoteMode) {
-    confirmDialog(`Delete ${label}? (permanent)`, () => deleteRemoteEntries(names));
+  if (panel.remoteMode) {
+    const ses = cur();
+    confirmDialog(`Delete ${label}? (permanent)`, () => deleteRemoteEntries(ses, names));
     return;
   }
   const targets = names.map(n => path.join(panel.cwd, n));
@@ -1132,22 +1346,23 @@ function deleteEntry() {
   });
 }
 
-function deleteRemoteEntries(names) {
+function deleteRemoteEntries(ses, names) {
   const errs = [];
   let i = 0;
   const next = () => {
     if (i >= names.length) {
-      panel.marked.clear();
+      ses.marked.clear();
       if (errs.length) showMessage(`Delete failed: ${errs.length} item(s) — ${errs[0]}`);
-      refreshRemote();
+      refreshRemote(ses);
       return;
     }
     const name = names[i++];
-    const entry = panel.entries.find(e => e.name === name);
-    const rp = remoteCwd + '/' + name;
+    const entry = ses.entries.find(e => e.name === name);
+    const rp = ses.remoteCwd + '/' + name;
     const done = (err) => { if (err) errs.push(err.message); next(); };
-    if (entry && entry.type === 'dir') sftpSession.rmdir(rp, done);
-    else sftpSession.unlink(rp, done);
+    if (ses.sftpSession && entry && entry.type === 'dir') ses.sftpSession.rmdir(rp, done);
+    else if (ses.sftpSession) ses.sftpSession.unlink(rp, done);
+    else { errs.push('No SFTP session'); next(); }
   };
   next();
 }
@@ -1193,10 +1408,10 @@ function renameEntry() {
   if (!entry || entry.name === '..') return;
   inputDialog('Rename to:', entry.name, (newName) => {
     if (hasBadPath(newName)) { showMessage('Invalid name'); return; }
-    if (remoteMode) {
-      sftpSession.rename(remoteCwd + '/' + entry.name, remoteCwd + '/' + newName, (err) => {
+    if (panel.remoteMode) {
+      panel.sftpSession.rename(panel.remoteCwd + '/' + entry.name, panel.remoteCwd + '/' + newName, (err) => {
         if (err) showMessage('Rename failed: ' + err.message);
-        else refreshRemote();
+        else refreshRemote(cur());
       });
       return;
     }
@@ -1253,28 +1468,29 @@ function localTimestamp() {
 }
 
 function saveClipboardImage() {
+  const ses = cur(); // the tab that was active at capture time
   const filename = `screenshot_${localTimestamp()}.png`;
   const quiet = dialogOpen; // still save while a dialog is open, just skip UI feedback
   let savePath;
 
-  if (remoteMode) {
+  if (ses.remoteMode) {
     savePath = path.join(os.tmpdir(), filename);
   } else {
-    savePath = path.join(panel.cwd, filename);
+    savePath = path.join(ses.cwd, filename);
   }
 
   const scriptPath = path.join(__dirname, 'clip_save.ps1');
   execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-dest', savePath], (err, stdout) => {
     if (err || stdout.trim() !== 'OK') { log('clipboard | no image'); return; }
 
-    if (remoteMode && sftpSession) {
-      const rp = remoteCwd + '/' + filename;
-      sftpSession.fastPut(savePath, rp, (ue) => {
+    if (ses.remoteMode && ses.sftpSession) {
+      const rp = ses.remoteCwd + '/' + filename;
+      ses.sftpSession.fastPut(savePath, rp, (ue) => {
         try { fs.unlinkSync(savePath); } catch {}
-        if (quiet || dialogOpen) return;
+        if (quiet || dialogOpen || ses !== cur()) return;
         if (ue) { showMessage('Upload failed'); return; }
-        showMessage('📷 ' + filename + ' → ' + remoteHost);
-        refreshRemote();
+        showMessage('📷 ' + filename + ' → ' + ses.remoteHost);
+        refreshRemote(ses);
       });
     } else if (!quiet && !dialogOpen) {
       showMessage('📷 ' + filename);
@@ -1285,6 +1501,7 @@ function saveClipboardImage() {
 
 // ── Clipboard File Paste ─────────────────────────────────
 function pasteFilesFromClipboard() {
+  const ses = cur();
   const psCmd = '$f = Get-Clipboard -Format FileDropList; if ($f) { $f.FullName -join "`n" } else { "" }';
   execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCmd], (err, stdout) => {
     if (err || !stdout.trim()) { showMessage('No files in clipboard'); return; }
@@ -1292,17 +1509,17 @@ function pasteFilesFromClipboard() {
     let done = 0, failed = 0;
     files.forEach(src => {
       const name = path.basename(src);
-      if (remoteMode && sftpSession) {
-        const rp = remoteCwd + '/' + name;
-        sftpSession.fastPut(src, rp, (ue) => {
+      if (ses.remoteMode && ses.sftpSession) {
+        const rp = ses.remoteCwd + '/' + name;
+        ses.sftpSession.fastPut(src, rp, (ue) => {
           if (ue) failed++; else done++;
           if (done + failed === files.length) {
-            showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : '') + ` → ${remoteHost}`);
-            refreshRemote();
+            showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : '') + ` → ${ses.remoteHost}`);
+            refreshRemote(ses);
           }
         });
       } else {
-        const dest = path.join(panel.cwd, name);
+        const dest = path.join(ses.cwd, name);
         try { fs.copyFileSync(src, dest); done++; } catch { failed++; }
         if (done + failed === files.length) {
           showMessage(`Pasted ${done} file(s)` + (failed ? `, ${failed} failed` : ''));
@@ -1317,7 +1534,7 @@ function pasteFilesFromClipboard() {
 let watcher = null;
 function watchDir() {
   if (watcher) { try { watcher.close(); } catch {} watcher = null; }
-  if (remoteMode) return;
+  if (panel.remoteMode) return;
   try {
     watcher = fs.watch(panel.cwd, { persistent: false }, () => {
       if (!dialogOpen) render();
@@ -1352,6 +1569,21 @@ function mouseHitTest(data) {
 screen.on('mouse', (data) => {
   markActive();
   if (dialogOpen) return;
+
+  // Tab bar: left-click = switch / open picker on "+", right-click = close tab
+  if (data.action === 'mousedown') {
+    const tp = tabBar.lpos;
+    if (tp && data.y === tp.yi) {
+      const rel = data.x - tp.xi;
+      const hit = tabHits.find(h => rel >= h.x0 && rel <= h.x1);
+      if (hit) {
+        if (hit.idx === 'new') showNewTabDialog();
+        else if (data.button === 'right') closeTab(hit.idx);
+        else switchTab(hit.idx);
+      }
+      return;
+    }
+  }
 
   if (data.action === 'mousedown') {
     const idx = mouseHitTest(data);
@@ -1419,6 +1651,12 @@ screen.on('keypress', (ch, key) => {
   // Alt+Shift+C — copy path (works with c, C, ㅊ for Korean IME)
   if (key.meta && key.shift && (key.name === 'c' || ch === 'C' || ch === 'ㅊ')) {
     copyPathToClipboard();
+    return;
+  }
+
+  // Alt+1..9 — jump straight to tab N
+  if (key.meta && ch >= '1' && ch <= '9') {
+    switchTab(parseInt(ch, 10) - 1);
     return;
   }
 
@@ -1490,9 +1728,22 @@ screen.on('keypress', (ch, key) => {
     case 'return':
       openEntry();
       break;
+    case 'tab':
+      if (sessions.length > 1) {
+        switchTab(key.shift
+          ? (activeIdx - 1 + sessions.length) % sessions.length
+          : (activeIdx + 1) % sessions.length);
+      }
+      break;
+    case 't':
+      showNewTabDialog();
+      break;
+    case 'w':
+      closeTab(activeIdx);
+      break;
     case 'backspace':
-      log('backspace | remoteMode:', remoteMode, 'cwd:', panel.cwd, 'remoteCwd:', remoteCwd);
-      if (remoteMode) navigate('..');
+      log('backspace | panel.remoteMode:', panel.remoteMode, 'cwd:', panel.cwd, 'panel.remoteCwd:', panel.remoteCwd);
+      if (panel.remoteMode) navigate('..');
       else navigate(path.dirname(panel.cwd));
       break;
     case 'f2':
@@ -1501,7 +1752,7 @@ screen.on('keypress', (ch, key) => {
     case 'f4': {
       const entry = panel.entries[panel.selectedIndex];
       if (entry && entry.name !== '..' && entry.type !== 'dir') {
-        const fp = remoteMode ? null : path.join(panel.cwd, entry.name);
+        const fp = panel.remoteMode ? null : path.join(panel.cwd, entry.name);
         if (!fp) { showMessage('Cannot edit remote files'); break; }
         require('child_process').spawn('notepad.exe', [fp], { detached: true, stdio: 'ignore' }).unref();
       }
@@ -1523,12 +1774,14 @@ screen.on('keypress', (ch, key) => {
       registerClaudeWorkspace();
       break;
     case 'f10':
-      if (remoteMode) {
-        disconnectSFTP();
-        panel.cwd = path.resolve(process.argv[2] || process.cwd());
-        panel.selectedIndex = 0;
-        panel.scrollOffset = 0;
+      if (panel.remoteMode) {
+        const ses = cur();
+        disconnectSFTP(ses);
+        ses.cwd = path.resolve(process.argv[2] || process.cwd());
+        ses.selectedIndex = 0;
+        ses.scrollOffset = 0;
         watchDir();
+        saveSessions();
         render();
       } else {
         showSSHMenu();
@@ -1604,7 +1857,8 @@ function releaseActiveFile() {
 
 function cleanup() {
   if (clipInterval) { clearInterval(clipInterval); clipInterval = null; }
-  disconnectSFTP();
+  saveSessions();
+  for (const s of sessions) { if (s.sftpConn) { try { s.sftpConn.end(); } catch {} } }
   if (watcher) { try { watcher.close(); } catch {} watcher = null; }
   releaseActiveFile();
 }
@@ -1620,9 +1874,20 @@ try { fs.unlinkSync(path.join(os.tmpdir(), '.treeru.pid')); } catch {}
 cleanupStaleClaims();
 markActive();
 
-const startDir = process.argv[2] || process.cwd();
-panel.cwd = path.resolve(startDir);
+// Restore previous tabs (zellij-style); a CLI dir argument focuses/creates its own tab
+const restored = loadSessions();
+const argDir = process.argv[2] ? path.resolve(process.argv[2]) : null;
+if (!restored) {
+  sessions = [newSession(argDir || process.cwd())];
+  activeIdx = 0;
+} else if (argDir) {
+  const existing = sessions.findIndex(s => !s.remoteMode && !s.pendingRemote && s.cwd === argDir);
+  if (existing >= 0) activeIdx = existing;
+  else { sessions.push(newSession(argDir)); activeIdx = sessions.length - 1; }
+}
 
 watchDir();
 startClipboardWatcher();
 render();
+activatePendingRemote(); // if the restored active tab is an SSH session, reconnect it
+saveSessions();

@@ -50,7 +50,7 @@ powershell -NoProfile -Command "$lnk = [Environment]::GetFolderPath('Desktop') +
 
 echo [4/4] Removing user data...
 if exist "%USERPROFILE%\.treeru_claude_profile" rmdir /S /Q "%USERPROFILE%\.treeru_claude_profile" >nul 2>&1
-del /Q "%USERPROFILE%\.treeru_claude.json" "%USERPROFILE%\.treeru_config.json" "%USERPROFILE%\.treeru_hosts.json" >nul 2>&1
+del /Q "%USERPROFILE%\.treeru_claude.json" "%USERPROFILE%\.treeru_config.json" "%USERPROFILE%\.treeru_hosts.json" "%USERPROFILE%\.treeru_sessions.json" >nul 2>&1
 echo       Done
 
 echo.

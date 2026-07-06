@@ -37,8 +37,20 @@ Press `Del` in the `F12` menu to remove a workspace.
 > `~/.treeru_config.json` (created on first run). Only enable this if you
 > understand what the flag does.
 
+## Tabs (Sessions)
+
+Run multiple working folders — local and SSH — inside one TreeRU window, zellij-style.
+
+- **`T`** opens the new-tab picker: duplicate the current tab, open home, or **connect straight to any SSH host** from `~/.ssh/config`
+- **Click** a tab to switch, **right-click** to close, click **`+`** for a new tab
+- **`Tab` / `Shift+Tab`** cycle tabs, **`Alt+1`–`9`** jump directly, **`W`** closes the current tab
+- Each tab keeps its **own independent SSH connection** — browse three servers in three tabs at once
+- **Sessions are restored on restart**: your tabs (including SSH ones, which reconnect when you switch to them) come back exactly as you left them. Stored in `~/.treeru_sessions.json`
+- Screenshots save into the **active tab's folder**
+
 ## Features
 
+- **Tabs / sessions** — multiple local & SSH workspaces in one window, restored across restarts (see above)
 - **Multi-column layout** — Far Manager style, responsive 2–4 columns based on terminal width. Navigate between columns with `←` `→` arrow keys
 - **File viewer** — Press `Enter` on a file to view with line numbers. Scroll, copy entire content (`C`), or open in Notepad (`F4`)
 - **Multi-select** — `Space` to toggle, `Shift+↑↓` for range select, mouse drag or `Ctrl+Click` for multiple files
@@ -129,6 +141,10 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `Space` | Toggle select file |
 | `Shift+↑↓` | Range select |
 | `Backspace` | Go to parent directory |
+| `T` | New tab (picker: duplicate / home / SSH hosts) |
+| `W` | Close current tab |
+| `Tab` / `Shift+Tab` | Next / previous tab |
+| `Alt+1`–`9` | Jump to tab N |
 | `F6` / `Alt+Shift+C` | Copy path(s) to clipboard |
 | `F2` | Rename |
 | `F4` | Edit in Notepad |
