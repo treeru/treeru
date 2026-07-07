@@ -69,7 +69,7 @@ You can also open a bookmark **as a new tab**: press **T** (or click **+**), cho
 - **Mouse support** — Click to navigate, double-click to enter folder, drag to select, Ctrl+Click to toggle
 - **F5 File paste** — Copy files in Explorer (Ctrl+C) → paste in TreeRU with `F5`. Works with SSH remote folders
 - **SSH/SFTP remote browsing** — Press `F10` to connect to servers from your `~/.ssh/config` (SSH key auth required)
-- **Clipboard image auto-save** — Take a screenshot and it auto-saves to the current folder. Works with Windows 11 Print Screen, Snipaste, Win+Shift+S, and more
+- **Clipboard image auto-save + auto path copy** — Take a screenshot and it auto-saves to the current folder, and the moment the save completes the **file path is copied to your clipboard** (remote path when in an SSH folder). Paste straight into your AI CLI. Disable with `"screenshotCopyPath": false` in `~/.treeru_config.json`. Works with Windows 11 Print Screen, Snipaste, Win+Shift+S, and more
 - **Multiple instances** — Run TreeRU in several panes/tabs at once. Screenshots are saved only by the instance you last interacted with (marked with 📷 in the status bar), never duplicated
 - **Multi-path copy (Alt+Shift+C)** — Copy selected file paths (comma-separated). Handy for passing paths to AI CLI tools
 - **CJK filename support** — Correctly displays CJK (Korean, Japanese, Chinese) filenames
@@ -80,7 +80,7 @@ You can also open a bookmark **as a new tab**: press **T** (or click **+**), cho
 Split your terminal (`Ctrl+Shift+D`). Left: Claude Code. Right: TreeRU.
 
 **Passing a screenshot to Claude Code:**
-1. Take a screenshot (`PrtSc`, `Win+Shift+S`, Snipaste, etc.)
+1. Take a screenshot (`PrtSc`, `Win+Shift+S`, Snipaste, etc.) — the path is copied to the clipboard as soon as the save completes, so you can **skip straight to pasting**
 2. TreeRU auto-saves it to the current folder as `screenshot_....png`
 3. Navigate to the file → `Alt+Shift+C` to copy the path
 4. Switch to Claude Code → `Ctrl+V` to paste the path

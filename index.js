@@ -127,7 +127,7 @@ function esc(s) { return String(s == null ? '' : s).replace(/\{/g, '{open}'); }
 // ── User Config ─────────────────────────────────────────
 const CONFIG_FILE = path.join(os.homedir(), '.treeru_config.json');
 function loadConfig() {
-  const def = { claudeSkipPermissions: false };
+  const def = { claudeSkipPermissions: false, screenshotCopyPath: true };
   try { return Object.assign(def, JSON.parse(readFileSync(CONFIG_FILE, 'utf8'))); } catch {}
   try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(def, null, 2)); } catch {}
   return def;
@@ -653,7 +653,7 @@ const pathBar = blessed.box({
 // ── Tabs ────────────────────────────────────────────────
 let tabHits = []; // clickable x-ranges on the tab bar
 
-function tabLabel(s, i) {
+function tabLabel(s, i, maxW) {
   let name;
   if (s.remoteMode) {
     const base = (s.remoteCwd || '/').split('/').filter(Boolean).pop() || '/';
@@ -663,15 +663,21 @@ function tabLabel(s, i) {
   } else {
     name = path.basename(s.cwd) || s.cwd;
   }
-  if (strWidth(name) > 20) name = truncW(name, 20);
-  return ` ${i + 1}:${name} `;
+  if (strWidth(name) > maxW) name = truncW(name, maxW);
+  return `  ${i + 1}:${name}  `; // 2-space padding both sides → chunkier, easier-to-hit chips
 }
 
 function renderTabBar() {
   tabHits = [];
+  // Dynamic label width: split the row among tabs so few tabs get LONG readable
+  // names (up to 36 cols) and many tabs degrade gracefully (min 8 cols).
+  const n = Math.max(1, sessions.length);
+  const scrW = (screen.width || 120);
+  const per = Math.floor((scrW - 5 /* "+" chip */ - 2 * n /* gaps */) / n);
+  const maxW = Math.max(8, Math.min(36, per - 7 /* padding(4) + "NN:"(3) */));
   let x = 0, out = '';
   sessions.forEach((s, i) => {
-    const label = tabLabel(s, i);
+    const label = tabLabel(s, i, maxW);
     const w = strWidth(label);
     const safe = esc(label);
     tabHits.push({ x0: x, x1: x + w - 1, idx: i });
@@ -683,12 +689,13 @@ function renderTabBar() {
       const bg = remote ? '#1F7A86' : '#9A6E14';
       out += `{white-fg}{${bg}-bg}{bold}${safe}{/}`;
     } else {
-      // Inactive tab: light text on a dark chip so each tab reads as a distinct button
-      const fg = remote ? '#7FD3DE' : '#C8C8C8';
-      out += `{${fg}-fg}{#2A2A3E-bg}${safe}{/}`;
+      // Inactive tab: bright text on a lighter chip — previous #C8C8C8/#2A2A3E read
+      // as "barely there" on some terminals (user report), so lift both a step.
+      const fg = remote ? '#8FE0EA' : '#E8E8E8';
+      out += `{${fg}-fg}{#3A3A56-bg}${safe}{/}`;
     }
-    out += '{#10101E-bg} {/}'; // gap between tabs (matches bar background)
-    x += w + 1;
+    out += '{#10101E-bg}  {/}'; // 2-col gap between tabs (matches bar background)
+    x += w + 2;
   });
   tabHits.push({ x0: x, x1: x + 4, idx: 'new' });
   out += '{white-fg}{#9A6E14-bg}{bold} + {/}';
@@ -1849,15 +1856,45 @@ function saveClipboardImage() {
       const rp = ses.remoteCwd + '/' + filename;
       ses.sftpSession.fastPut(savePath, rp, (ue) => {
         try { fs.unlinkSync(savePath); } catch {}
+        if (ue) { if (!quiet && !dialogOpen && ses === cur()) showMessage('Upload failed'); return; }
+        // Upload finished → the remote path is final; safe to hand it to the clipboard now
+        autoCopyScreenshotPath(rp, filename, ses, quiet);
         if (quiet || dialogOpen || ses !== cur()) return;
-        if (ue) { showMessage('Upload failed'); return; }
-        showMessage('📷 ' + filename + ' → ' + ses.remoteHost);
         refreshRemote(ses);
       });
-    } else if (!quiet && !dialogOpen) {
-      showMessage('📷 ' + filename);
-      render();
+    } else {
+      // clip_save.ps1 exits only after the PNG is fully written, so the file is
+      // complete here — but stat-verify anyway (size>0) before copying the path.
+      autoCopyScreenshotPath(savePath, filename, ses, quiet);
+      if (!quiet && !dialogOpen) render();
     }
+  });
+}
+
+// After a screenshot lands on disk, put its full path on the clipboard so it can
+// be pasted straight into an AI CLI (replaces the manual CopyPath step).
+// Runs strictly AFTER the save callback (local write / SFTP upload complete) —
+// never on a timer — so the file always exists by the time the path is copied.
+function autoCopyScreenshotPath(fullPath, filename, ses, quiet) {
+  const announce = (suffix) => {
+    if (quiet || dialogOpen || ses !== cur()) return;
+    const dest = ses.remoteMode ? ' → ' + ses.remoteHost : '';
+    showMessage('📷 ' + filename + dest + suffix);
+    render();
+  };
+  if (!config.screenshotCopyPath) { announce(''); return; }
+  const doCopy = () => copyTextToClipboard(fullPath, (e) => announce(e ? '' : '  (path copied)'));
+  if (ses.remoteMode) { doCopy(); return; } // fastPut callback == upload complete
+  fs.stat(fullPath, (se, st) => {
+    if (se || !st || st.size <= 0) {
+      // Extremely defensive: give a slow disk one more beat, then re-check once.
+      setTimeout(() => fs.stat(fullPath, (se2, st2) => {
+        if (se2 || !st2 || st2.size <= 0) { announce(''); return; }
+        doCopy();
+      }), 300);
+      return;
+    }
+    doCopy();
   });
 }
 

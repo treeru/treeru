@@ -68,7 +68,7 @@ SSH에서도 동작합니다 — `F10`으로 접속 후 원격 폴더에서 `F9`
 - **마우스 지원** — 클릭으로 이동, 더블클릭으로 폴더 진입, 드래그로 범위 선택, Ctrl+클릭으로 토글
 - **F5 파일 붙여넣기** — 탐색기에서 Ctrl+C → TreeRU에서 `F5`로 붙여넣기. SSH 원격 폴더에도 지원
 - **SSH/SFTP 원격 탐색** — `F10`으로 `~/.ssh/config`에 등록된 서버 목록에서 바로 접속 (SSH Key 등록 필수)
-- **클립보드 이미지 자동 저장** — 스크린샷 찍으면 현재 폴더에 자동 저장. Windows 11 Print Screen, Snipaste, Win+Shift+S 모두 지원
+- **클립보드 이미지 자동 저장 + 경로 자동 복사** — 스크린샷 찍으면 현재 폴더에 자동 저장되고, 저장이 끝나는 즉시 **파일 경로가 클립보드에 복사**됩니다(SSH 원격 폴더면 원격 경로). AI CLI에 바로 붙여넣기만 하면 끝. 끄려면 `~/.treeru_config.json`에서 `"screenshotCopyPath": false`. Windows 11 Print Screen, Snipaste, Win+Shift+S 모두 지원
 - **다중 인스턴스** — 여러 창/탭에 TreeRU를 동시에 띄울 수 있습니다. 스크린샷은 마지막으로 조작한 인스턴스(상태바에 📷 표시)에만 저장되고 중복 저장되지 않습니다
 - **다중 경로 복사 (Alt+Shift+C)** — 선택한 파일들의 경로를 콤마로 구분하여 복사. AI CLI에 경로 전달할 때 편리
 - **CJK/한글 파일명 지원** — 한글 폴더/파일명 정상 표시
@@ -79,7 +79,7 @@ SSH에서도 동작합니다 — `F10`으로 접속 후 원격 폴더에서 `F9`
 터미널을 분할합니다 (`Ctrl+Shift+D`). 왼쪽: Claude Code. 오른쪽: TreeRU.
 
 **스크린샷을 Claude Code에 전달하기:**
-1. 스크린샷 촬영 (`PrtSc`, `Win+Shift+S`, Snipaste 등)
+1. 스크린샷 촬영 (`PrtSc`, `Win+Shift+S`, Snipaste 등) — 저장과 동시에 경로가 클립보드에 복사되므로 **바로 4번으로**
 2. TreeRU가 현재 폴더에 `screenshot_....png`로 자동 저장
 3. 해당 파일로 이동 → `Alt+Shift+C`로 경로 복사
 4. Claude Code로 전환 → `Ctrl+V`로 붙여넣기
