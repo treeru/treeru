@@ -127,7 +127,7 @@ function esc(s) { return String(s == null ? '' : s).replace(/\{/g, '{open}'); }
 // ── User Config ─────────────────────────────────────────
 const CONFIG_FILE = path.join(os.homedir(), '.treeru_config.json');
 function loadConfig() {
-  const def = { claudeSkipPermissions: false, screenshotCopyPath: true };
+  const def = { claudeSkipPermissions: false, screenshotCopyPath: true, tabStyle: 'arrow' };
   try { return Object.assign(def, JSON.parse(readFileSync(CONFIG_FILE, 'utf8'))); } catch {}
   try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(def, null, 2)); } catch {}
   return def;
@@ -653,50 +653,71 @@ const pathBar = blessed.box({
 // ── Tabs ────────────────────────────────────────────────
 let tabHits = []; // clickable x-ranges on the tab bar
 
-function tabLabel(s, i, maxW) {
-  let name;
+// Human name for a tab. pendingRemote (a restored SSH tab that hasn't connected
+// yet) carries its saved path — show the real folder name, not "host:…".
+function tabName(s) {
   if (s.remoteMode) {
     const base = (s.remoteCwd || '/').split('/').filter(Boolean).pop() || '/';
-    name = `${s.remoteHost}:${base}`;
-  } else if (s.pendingRemote) {
-    name = `${s.pendingRemote.host}:…`;
-  } else {
-    name = path.basename(s.cwd) || s.cwd;
+    return `${s.remoteHost}:${base}`;
   }
-  if (strWidth(name) > maxW) name = truncW(name, maxW);
-  return `  ${i + 1}:${name}  `; // 2-space padding both sides → chunkier, easier-to-hit chips
+  if (s.pendingRemote) {
+    const p = String(s.pendingRemote.path || '');
+    const base = (p && p !== '.') ? (p.split('/').filter(Boolean).pop() || '~') : '~';
+    return `${s.pendingRemote.host}:${base}`;
+  }
+  return path.basename(s.cwd) || s.cwd;
 }
 
 function renderTabBar() {
   tabHits = [];
-  // Dynamic label width: split the row among tabs so few tabs get LONG readable
-  // names (up to 36 cols) and many tabs degrade gracefully (min 8 cols).
-  const n = Math.max(1, sessions.length);
+  const n = sessions.length;
   const scrW = (screen.width || 120);
-  const per = Math.floor((scrW - 5 /* "+" chip */ - 2 * n /* gaps */) / n);
-  const maxW = Math.max(8, Math.min(36, per - 7 /* padding(4) + "NN:"(3) */));
+  const useArrows = config.tabStyle !== 'chip'; // powerline-glyph fallback for fonts without E0B0
+  const ARROW = '\uE0B0'; // powerline right-arrow (PL/Nerd font; config tabStyle:'chip' to opt out)
+  const perOverhead = useArrows ? 3 : 6; // " label " padding(2)+arrow(1) | padding(4)+gap(2)
+  const names = sessions.map((s, i) => `${i + 1}:${tabName(s)}`);
+
+  // Need-based responsive width: everyone keeps their natural width when the row
+  // fits; only when over budget, shrink the cap (36 → 8) until it fits. So with
+  // few tabs / wide screens nothing is ever truncated.
+  let cap = 36;
+  for (; cap > 8; cap--) {
+    let tot = 5; // " + " chip + lead slack
+    for (const nm of names) tot += Math.min(strWidth(nm), cap) + perOverhead;
+    if (tot <= scrW) break;
+  }
+
   let x = 0, out = '';
   sessions.forEach((s, i) => {
-    const label = tabLabel(s, i, maxW);
-    const w = strWidth(label);
-    const safe = esc(label);
-    tabHits.push({ x0: x, x1: x + w - 1, idx: i });
+    const nm = strWidth(names[i]) > cap ? truncW(names[i], cap) : names[i];
     const remote = s.remoteMode || s.pendingRemote;
-    if (i === activeIdx) {
-      // Active tab: WHITE bold text on a deep solid fill (teal=remote, amber=local).
-      // Deep bg (not bright) so white stays high-contrast; bold-black on a bright bg
-      // gets brightened to gray by some terminals, so we avoid dark text entirely.
-      const bg = remote ? '#1F7A86' : '#9A6E14';
-      out += `{white-fg}{${bg}-bg}{bold}${safe}{/}`;
+    // Active: white bold on deep solid fill (teal=remote, amber=local) — deep bg keeps
+    // white high-contrast; bold-dark-on-bright grays out on some terminals (1088).
+    const bg = i === activeIdx ? (remote ? '#1F7A86' : '#9A6E14') : '#3A3A56';
+    const fg = i === activeIdx ? 'white' : (remote ? '#8FE0EA' : '#E8E8E8');
+    const bold = i === activeIdx ? '{bold}' : '';
+
+    if (useArrows) {
+      // Zellij-style ribbon: segments joined by powerline arrows (E0B0).
+      const label = ` ${nm} `;
+      const w = strWidth(label);
+      const nextBg = i < n - 1
+        ? (i + 1 === activeIdx ? ((sessions[i + 1].remoteMode || sessions[i + 1].pendingRemote) ? '#1F7A86' : '#9A6E14') : '#3A3A56')
+        : '#10101E';
+      out += `{${fg}-fg}{${bg}-bg}${bold}${esc(label)}{/}`;
+      out += `{${bg}-fg}{${nextBg}-bg}${ARROW}{/}`;
+      tabHits.push({ x0: x, x1: x + w, idx: i }); // arrow col included in the hit area
+      x += w + 1;
     } else {
-      // Inactive tab: bright text on a lighter chip — previous #C8C8C8/#2A2A3E read
-      // as "barely there" on some terminals (user report), so lift both a step.
-      const fg = remote ? '#8FE0EA' : '#E8E8E8';
-      out += `{${fg}-fg}{#3A3A56-bg}${safe}{/}`;
+      const label = `  ${nm}  `;
+      const w = strWidth(label);
+      out += `{${fg}-fg}{${bg}-bg}${bold}${esc(label)}{/}`;
+      out += '{#10101E-bg}  {/}';
+      tabHits.push({ x0: x, x1: x + w - 1, idx: i });
+      x += w + 2;
     }
-    out += '{#10101E-bg}  {/}'; // 2-col gap between tabs (matches bar background)
-    x += w + 2;
   });
+  if (useArrows) { out += '{#10101E-bg} {/}'; x += 1; }
   tabHits.push({ x0: x, x1: x + 4, idx: 'new' });
   out += '{white-fg}{#9A6E14-bg}{bold} + {/}';
   tabBar.setContent(out);

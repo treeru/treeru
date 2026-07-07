@@ -63,6 +63,7 @@ You can also open a bookmark **as a new tab**: press **T** (or click **+**), cho
 ## Features
 
 - **Tabs / sessions** — multiple local & SSH workspaces in one window, restored across restarts (see above)
+- **Zellij-style tab bar** — powerline arrow ribbon with responsive widths (full names when there's room, shrink only when crowded). For fonts without powerline glyphs set `"tabStyle": "chip"` in `~/.treeru_config.json`
 - **Multi-column layout** — Far Manager style, responsive 2–4 columns based on terminal width. Navigate between columns with `←` `→` arrow keys
 - **File viewer** — Press `Enter` on a file to view with line numbers. Scroll, copy entire content (`C`), or open in Notepad (`F4`)
 - **Multi-select** — `Space` to toggle, `Shift+↑↓` for range select, mouse drag or `Ctrl+Click` for multiple files
