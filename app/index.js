@@ -127,7 +127,7 @@ function esc(s) { return String(s == null ? '' : s).replace(/\{/g, '{open}'); }
 // ── User Config ─────────────────────────────────────────
 const CONFIG_FILE = path.join(os.homedir(), '.treeru_config.json');
 function loadConfig() {
-  const def = { claudeSkipPermissions: false, screenshotCopyPath: true, tabStyle: 'arrow' };
+  const def = { claudeSkipPermissions: false, screenshotCopyPath: true, tabStyle: 'arrow', mouseVTFix: true };
   try { return Object.assign(def, JSON.parse(readFileSync(CONFIG_FILE, 'utf8'))); } catch {}
   try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(def, null, 2)); } catch {}
   return def;
@@ -2320,6 +2320,32 @@ process.on('SIGINT', () => { cleanup(); process.exit(0); });
 process.on('SIGTERM', () => { cleanup(); process.exit(0); });
 process.on('exit', cleanup);
 
+// ── Windows mouse fix ───────────────────────────────────
+// On Windows, Node's setRawMode() (which blessed calls to take over stdin) clears
+// the console's ENABLE_VIRTUAL_TERMINAL_INPUT (0x0200) flag. That flag is what
+// Windows Terminal needs to deliver mouse events as SGR escape sequences, so the
+// mouse silently stops working while the keyboard still works. We re-set the flag
+// AFTER blessed has grabbed stdin, via a Win32 SetConsoleMode call. Runs async so
+// it never blocks the UI; harmless where the flag is already set; opt out with
+// "mouseVTFix": false in ~/.treeru_config.json.
+function enableVTMouseInput() {
+  if (!isWindows || config.mouseVTFix === false) return;
+  const ps = [
+    '$s=@"',
+    'using System;using System.Runtime.InteropServices;',
+    'public static class VT{',
+    '[DllImport("kernel32.dll")]public static extern IntPtr GetStdHandle(int n);',
+    '[DllImport("kernel32.dll")]public static extern bool GetConsoleMode(IntPtr h,out uint m);',
+    '[DllImport("kernel32.dll")]public static extern bool SetConsoleMode(IntPtr h,uint m);}',
+    '"@',
+    'Add-Type -TypeDefinition $s',
+    '$h=[VT]::GetStdHandle(-10);$m=0',              // STD_INPUT_HANDLE
+    '[void][VT]::GetConsoleMode($h,[ref]$m)',
+    '[void][VT]::SetConsoleMode($h,($m -bor 0x200))', // ENABLE_VIRTUAL_TERMINAL_INPUT
+  ].join('\n');
+  try { execFile('powershell', ['-NoProfile', '-Command', ps], () => {}); } catch {}
+}
+
 // ── Init ────────────────────────────────────────────────
 // One-time cleanup of leftovers from removed features:
 // browser profile of the old F8 usage monitor (held session cookies) + legacy pid file
@@ -2343,5 +2369,8 @@ if (!restored) {
 watchDir();
 startClipboardWatcher();
 render();
+// Re-enable Windows Terminal mouse input after blessed has set raw mode (see above).
+// Deferred slightly so libuv's raw-mode init has definitely run first.
+setTimeout(enableVTMouseInput, 120);
 activatePendingRemote(); // if the restored active tab is an SSH session, reconnect it
 saveSessions();

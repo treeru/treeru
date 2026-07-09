@@ -1,3 +1,4 @@
+1095 - Windows Terminal 마우스 자동 복구: Node raw mode가 지우는 ENABLE_VIRTUAL_TERMINAL_INPUT(0x200)을 blessed 입력 인수 후 SetConsoleMode로 재설정 → 별도 설정/프롬프트 없이 마우스 무조건 동작 (off: mouseVTFix:false)
 1094 - 탭바 전면 개선: zellij 스타일 화살표 리본(기본, 폰트 미지원시 tabStyle:"chip") + 필요기반 반응형 폭(공간 남으면 풀네임, 모자랄 때만 8자까지 축소) + 미연결 SSH 복원탭도 실제 폴더명 표시(host:… 해소)
 1093 - 스크린샷 저장 시 경로 자동 복사(저장 완료 후에만, SSH면 원격 경로 — 옵션 screenshotCopyPath) + 탭바 시인성 개선(탭 폭 동적 확대·패딩·비활성 탭 밝게)
 1092 - 심볼릭 링크 폴더 인식: 디렉토리를 가리키는 symlink(예: treeweb→/data2/treeweb)를 폴더로 표시·정렬·진입 가능하게(로컬+SSH), ~ 마커로 링크 표시
