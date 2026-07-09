@@ -4,6 +4,8 @@
 
 A terminal-based file explorer that lets you browse folder/file structures without an IDE.
 
+### [**⬇ Download TreeRU**](https://github.com/treeru/treeru/releases) &nbsp;·&nbsp; [![latest release](https://img.shields.io/github/v/release/treeru/treeru?label=latest&color=2ea44f)](https://github.com/treeru/treeru/releases)
+
 Built for use alongside AI CLI tools (Claude Code, Codex, Gemini CLI, etc.).
 Split your Windows Terminal (Ctrl+Shift+D) — one side for your terminal, the other for TreeRU.
 
@@ -81,11 +83,11 @@ You can also open a bookmark **as a new tab**: press **T** (or click **+**), cho
 Split your terminal (`Ctrl+Shift+D`). Left: Claude Code. Right: TreeRU.
 
 **Passing a screenshot to Claude Code:**
-1. Take a screenshot (`PrtSc`, `Win+Shift+S`, Snipaste, etc.) — the path is copied to the clipboard as soon as the save completes, so you can **skip straight to pasting**
-2. TreeRU auto-saves it to the current folder as `screenshot_....png`
-3. Navigate to the file → `Alt+Shift+C` to copy the path
-4. Switch to Claude Code → `Ctrl+V` to paste the path
-5. Claude Code can now read and analyze the image
+1. Take a screenshot (`PrtSc`, `Win+Shift+S`, Snipaste, etc.)
+2. TreeRU auto-saves it to the current folder as `screenshot_....png` **and copies its path to your clipboard**
+3. Switch to Claude Code → `Ctrl+V` → Claude reads and analyzes the image
+
+(No auto-copy? It's on by default; re-enable with `"screenshotCopyPath": true` in `~/.treeru_config.json`. You can always navigate to any file and press `Alt+Shift+C` to copy its path manually.)
 
 **Asking Claude Code to edit a file:**
 1. Browse to the file in TreeRU
@@ -100,7 +102,7 @@ Split your terminal (`Ctrl+Shift+D`). Left: Claude Code. Right: TreeRU.
 2. `Alt+Shift+C` copies all paths (comma-separated)
 3. Paste into Claude Code → "review these files"
 
-No IDE needed. No drag-and-drop. Just copy the path and paste.
+No IDE, no mouse gymnastics. Just copy the path and paste.
 
 ## Install
 
@@ -169,7 +171,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 | `F9` | Register current folder as Claude Code workspace |
 | `F10` | SSH connect / disconnect |
 | `F12` | Launch Claude Code from registered workspace |
-| `PrtSc` / `Win+Shift+S` | Take screenshot → auto-saves to current folder |
+| `PrtSc` / `Win+Shift+S` | Take screenshot → auto-saves to current folder + path copied to clipboard |
 | `Esc` | Clear selection |
 
 **In file viewer:**
