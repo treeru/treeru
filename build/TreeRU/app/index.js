@@ -4,7 +4,7 @@ const blessed = require('blessed');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execFile } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 const APP_VERSION = (() => {
   try {
     const line = fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8').split('\n')[0];
@@ -2339,11 +2339,20 @@ function enableVTMouseInput() {
     '[DllImport("kernel32.dll")]public static extern bool SetConsoleMode(IntPtr h,uint m);}',
     '"@',
     'Add-Type -TypeDefinition $s',
-    '$h=[VT]::GetStdHandle(-10);$m=0',              // STD_INPUT_HANDLE
-    '[void][VT]::GetConsoleMode($h,[ref]$m)',
-    '[void][VT]::SetConsoleMode($h,($m -bor 0x200))', // ENABLE_VIRTUAL_TERMINAL_INPUT
+    '$h=[VT]::GetStdHandle(-10)',                   // STD_INPUT_HANDLE
+    '[uint32]$m=0',
+    'if(-not [VT]::GetConsoleMode($h,[ref]$m)){exit 1}',
+    'if(-not [VT]::SetConsoleMode($h,($m -bor 0x0200))){exit 2}', // ENABLE_VIRTUAL_TERMINAL_INPUT
   ].join('\n');
-  try { execFile('powershell', ['-NoProfile', '-Command', ps], () => {}); } catch {}
+  // MUST be execFileSync with stdio:'inherit' — a synchronous, handle-inheriting
+  // child so PowerShell's GetStdHandle(-10) resolves to TreeRU's *actual* console
+  // input buffer. Async execFile (piped stdio) gives PowerShell a pipe handle, so
+  // SetConsoleMode targets the wrong object and the mouse stays dead. The PS script
+  // writes nothing to stdout, so inheriting the console output is safe (no screen noise).
+  try {
+    execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps],
+      { stdio: 'inherit', windowsHide: true });
+  } catch {}
 }
 
 // ── Init ────────────────────────────────────────────────
