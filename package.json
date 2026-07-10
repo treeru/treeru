@@ -1,6 +1,6 @@
 {
   "name": "treeru",
-  "version": "1.15.3",
+  "version": "1.15.4",
   "description": "Terminal file manager with embedded shell",
   "bin": {
     "treeru": "./index.js"

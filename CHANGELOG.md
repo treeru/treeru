@@ -1,3 +1,4 @@
+1097 - 다른 TUI 공존 개선: (1) 종료/크래시 시 터미널 완전복구(마우스끄기·alt화면복귀) — 마우스모드 잔존으로 인한 문자쏟아짐 방지 (2) "mouse":false 옵션(키보드전용, zellij/tmux 등과 충돌원천차단) (3) uncaughtException 시 복구후 종료
 1096 - Windows 마우스 수정 실제 작동 반영: 비동기 execFile(파이프 핸들이라 SetConsoleMode 무효) → execFileSync + stdio:inherit 로 실콘솔 핸들 상속(현장 실기 검증). 좌클릭/더블클릭/드래그/휠 정상
 1095 - Windows Terminal 마우스 자동 복구: Node raw mode가 지우는 ENABLE_VIRTUAL_TERMINAL_INPUT(0x200)을 blessed 입력 인수 후 SetConsoleMode로 재설정 → 별도 설정/프롬프트 없이 마우스 무조건 동작 (off: mouseVTFix:false)
 1094 - 탭바 전면 개선: zellij 스타일 화살표 리본(기본, 폰트 미지원시 tabStyle:"chip") + 필요기반 반응형 폭(공간 남으면 풀네임, 모자랄 때만 8자까지 축소) + 미연결 SSH 복원탭도 실제 폴더명 표시(host:… 해소)

@@ -219,6 +219,18 @@ When you copy a screenshot to the clipboard, TreeRU automatically detects it and
 - Delay: ~1–2 seconds (varies by system)
 - With multiple TreeRU instances running, only the one you last interacted with saves the screenshot — it shows a 📷 marker in the status bar. To route a screenshot to a specific instance, click it (or press any key in it) first
 
+## Running next to another terminal app (zellij / tmux / vim)
+
+TreeRU uses mouse tracking, which the terminal forwards to the focused app as escape
+sequences. If you run TreeRU in the same terminal window as another full-screen app
+(e.g. an `ssh` + `zellij` session), those sequences can bleed into the other app as
+garbage characters. Two ways to avoid it:
+
+- **Run TreeRU in its own terminal window** (a separate window, not a split pane/tab of the other app) — fully isolated.
+- **Turn off TreeRU's mouse**: set `"mouse": false` in `~/.treeru_config.json`. TreeRU then works keyboard-only and emits no mouse sequences, so it coexists cleanly with any other terminal app.
+
+TreeRU also fully restores the terminal (mouse off, cursor back) when it exits or crashes, so it never leaves mouse mode lingering behind it.
+
 ## Made by
 
 **TreeRU** | Seoul, South Korea | info@treeru.com

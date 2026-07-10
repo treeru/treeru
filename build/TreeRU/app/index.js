@@ -31,6 +31,10 @@ const CRASH_LOG = path.join(os.tmpdir(), 'treeru_crash.log');
 process.on('uncaughtException', (err) => {
   const ts = new Date().toISOString();
   try { appendFileSync(CRASH_LOG, `[${ts}] ${err.stack || err}\n`); } catch {}
+  // A crash leaves blessed in an unknown state; rather than limp on and spew garbage,
+  // restore the terminal (cleanup() disables mouse + leaves the alt-screen) and exit.
+  try { cleanup(); } catch {}
+  process.exit(1);
 });
 
 // ── Color​ Theme ─────────────────────────────────────────
@@ -127,12 +131,18 @@ function esc(s) { return String(s == null ? '' : s).replace(/\{/g, '{open}'); }
 // ── User Config ─────────────────────────────────────────
 const CONFIG_FILE = path.join(os.homedir(), '.treeru_config.json');
 function loadConfig() {
-  const def = { claudeSkipPermissions: false, screenshotCopyPath: true, tabStyle: 'arrow', mouseVTFix: true };
+  const def = { claudeSkipPermissions: false, screenshotCopyPath: true, tabStyle: 'arrow', mouseVTFix: true, mouse: true };
   try { return Object.assign(def, JSON.parse(readFileSync(CONFIG_FILE, 'utf8'))); } catch {}
   try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(def, null, 2)); } catch {}
   return def;
 }
 const config = loadConfig();
+// Mouse tracking emits escape sequences the terminal forwards to whichever app is
+// focused. Running TreeRU next to another full-screen TUI (zellij, tmux, vim…) in the
+// same terminal window can make those sequences bleed into the other app as garbage
+// text. Set "mouse": false in ~/.treeru_config.json to run TreeRU keyboard-only so it
+// never emits mouse sequences — then it coexists cleanly with any other terminal app.
+const MOUSE = config.mouse !== false;
 
 // ── Claude Code Workspace ───────────────────────────────
 const CLAUDE_WS_FILE = path.join(os.homedir(), '.treeru_claude.json');
@@ -226,7 +236,7 @@ function showClaudeMenu() {
   });
   const menuList = blessed.list({
     parent: box, top: 0, left: 1, right: 1, height: listHeight,
-    tags: false, mouse: true, keys: true,
+    tags: false, mouse: MOUSE, keys: true,
     style: {
       fg: 'white',
       selected: { fg: 'white', bg: '#1F7A86', bold: true },
@@ -365,7 +375,7 @@ function showBookmarks() {
   });
   const menuList = blessed.list({
     parent: box, top: 0, left: 1, right: 1, height: listHeight,
-    tags: true, mouse: true, keys: true,
+    tags: true, mouse: MOUSE, keys: true,
     style: { fg: 'white', selected: { fg: 'white', bg: '#1F7A86', bold: true } },
     items,
   });
@@ -610,7 +620,7 @@ function truncW(s, tw) {
 }
 
 // ── Screen ──────────────────────────────────────────────
-const screen = blessed.screen({ smartCSR: true, title: 'Tree​RU', fullUnicode: true, mouse: true });
+const screen = blessed.screen({ smartCSR: true, title: 'Tree​RU', fullUnicode: true, mouse: MOUSE });
 
 // Header
 const headerBar = blessed.box({
@@ -628,7 +638,7 @@ const tabBar = blessed.box({
 const fileBox = blessed.box({
   parent: screen, top: 2, left: 0, width: '100%', height: '100%-6',
   border: { type: 'line' }, label: ' TreeRU ', tags: true,
-  scrollable: true, mouse: true, clickable: true,
+  scrollable: true, mouse: MOUSE, clickable: MOUSE,
   style: { border: { fg: C.border }, label: { fg: C.borderHi, bold: true } },
 });
 
@@ -780,7 +790,7 @@ function pickerMenu(title, rows, opts) {
   });
   const list = blessed.list({
     parent: box, top: 0, left: 1, right: 1, height: listHeight,
-    tags: true, mouse: true, keys: true,
+    tags: true, mouse: MOUSE, keys: true,
     style: { fg: 'white', selected: { fg: 'white', bg: '#1F7A86', bold: true } },
     items: rows.map(r => r.label),
   });
@@ -1227,7 +1237,7 @@ function showSSHMenu() {
 
   const list = blessed.list({
     parent: box, top: 0, left: 1, right: 1, height: listHeight,
-    tags: false, mouse: true, keys: true,
+    tags: false, mouse: MOUSE, keys: true,
     style: {
       fg: 'white',
       selected: { fg: 'black', bg: C.remote },
@@ -1456,7 +1466,7 @@ function openViewer(fp, name) {
   const viewer = blessed.box({
     parent: screen, top: 0, left: 0, width: '100%', height: '100%-1',
     border: { type: 'line' }, tags: true,
-    scrollable: true, alwaysScroll: true, mouse: true, keys: true,
+    scrollable: true, alwaysScroll: true, mouse: MOUSE, keys: true,
     inputOnFocus: false,
     scrollbar: { ch: '█', style: { fg: 'gray' } },
     style: { border: { fg: C.borderHi }, bg: 'black', fg: 'white' },
@@ -2309,12 +2319,21 @@ function releaseActiveFile() {
   } catch {}
 }
 
+let tornDown = false;
 function cleanup() {
   if (clipInterval) { clearInterval(clipInterval); clipInterval = null; }
   saveSessions();
   for (const s of sessions) { if (s.sftpConn) { try { s.sftpConn.end(); } catch {} } }
   if (watcher) { try { watcher.close(); } catch {} watcher = null; }
   releaseActiveFile();
+  // Restore the terminal exactly once: disable mouse tracking, leave the alt-screen,
+  // show the cursor. Without this, quitting/crashing can leave mouse mode ON, so the
+  // terminal then spews escape sequences (garbage) into whatever runs there next —
+  // e.g. an ssh+zellij session sharing the window.
+  if (!tornDown) {
+    tornDown = true;
+    try { if (typeof screen !== 'undefined' && screen && !screen.destroyed) screen.destroy(); } catch {}
+  }
 }
 process.on('SIGINT', () => { cleanup(); process.exit(0); });
 process.on('SIGTERM', () => { cleanup(); process.exit(0); });
@@ -2329,7 +2348,7 @@ process.on('exit', cleanup);
 // it never blocks the UI; harmless where the flag is already set; opt out with
 // "mouseVTFix": false in ~/.treeru_config.json.
 function enableVTMouseInput() {
-  if (!isWindows || config.mouseVTFix === false) return;
+  if (!isWindows || config.mouseVTFix === false || !MOUSE) return; // no mouse → nothing to enable
   const ps = [
     '$s=@"',
     'using System;using System.Runtime.InteropServices;',
