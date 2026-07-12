@@ -189,6 +189,7 @@ Split your Windows Terminal with `Ctrl+Shift+D` and run TreeRU on one side.
 
 Press `F10` to see a list of servers from your `~/.ssh/config`.
 Select one to browse remote files via SFTP.
+One-hop `ProxyJump` entries are supported, so hosts behind a bastion work the same way as with OpenSSH. Multiple or nested jump hosts are not supported.
 
 > SSH key authentication must be configured. Password authentication is not supported.
 

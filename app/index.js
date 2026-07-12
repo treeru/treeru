@@ -65,6 +65,8 @@ function newSession(cwd) {
     remoteUser: '',
     remoteCwd: '',
     sftpConn: null,
+    sftpJumpConn: null,
+    sftpForwardSock: null,
     sftpSession: null,
     pendingRemote: null, // { host, path } — restored/queued SSH tab, connects on activation
     _connecting: false,
@@ -441,6 +443,48 @@ function getSSHInfo(alias) {
     port: parseInt(c.port || '22', 10),
     username: c.user || process.env.USER || process.env.USERNAME || 'root',
     identityFile: c.identityfile || path.join(os.homedir(), '.ssh', 'id_rsa'),
+    proxyJump: c.proxyjump || '',
+  };
+}
+
+function parseProxyJump(spec) {
+  const value = String(spec || '').trim();
+  if (!value || value.toLowerCase() === 'none') return null;
+  if (value.includes(',')) throw new Error('Multiple ProxyJump hops are not supported');
+  const m = value.match(/^(?:([^@]+)@)?(\[[^\]]+\]|[^:]+)(?::(\d+))?$/);
+  if (!m) throw new Error(`Invalid ProxyJump: ${value}`);
+  const alias = m[2].replace(/^\[|\]$/g, '');
+  const info = getSSHInfo(alias);
+  if (info.proxyJump && info.proxyJump.toLowerCase() !== 'none') {
+    throw new Error('Nested ProxyJump is not supported');
+  }
+  if (m[1]) info.username = m[1];
+  // An explicit hostname in ProxyJump may not have its own Host block.
+  if (!sshConfig[alias]) info.host = alias;
+  if (m[3]) info.port = parseInt(m[3], 10);
+  return { alias, ...info };
+}
+
+function loadSSHKey(identityFile) {
+  const keyPath = identityFile.replace(/^~/, os.homedir()).replace(/"/g, '');
+  try { return { privateKey: readFileSync(keyPath), keyPath }; }
+  catch {
+    for (const name of ['id_rsa', 'id_ed25519', 'id_ecdsa']) {
+      const fallback = path.join(os.homedir(), '.ssh', name);
+      try { return { privateKey: readFileSync(fallback), keyPath: fallback }; } catch {}
+    }
+  }
+  throw new Error('No SSH key found');
+}
+
+function hostVerifierFor(host, port, onMismatch) {
+  return (hash) => {
+    const id = `${host}:${port}`;
+    const known = loadHostKeys();
+    if (!known[id]) { known[id] = hash; saveHostKeys(known); return true; }
+    if (known[id] === hash) return true;
+    onMismatch();
+    return false;
   };
 }
 
@@ -452,36 +496,46 @@ function saveHostKeys(k) { try { fs.writeFileSync(HOST_KEYS_FILE, JSON.stringify
 
 function connectSFTP(ses, alias, callback) {
   const info = getSSHInfo(alias);
-  let keyPath = info.identityFile.replace(/^~/, os.homedir()).replace(/"/g, '');
-  log('SFTP | connect', alias, info.host, info.port, info.username, keyPath);
-
-  let privateKey;
-  try { privateKey = readFileSync(keyPath); }
-  catch {
-    for (const name of ['id_rsa', 'id_ed25519', 'id_ecdsa']) {
-      try { privateKey = readFileSync(path.join(os.homedir(), '.ssh', name)); break; } catch {}
-    }
-  }
-  if (!privateKey) { callback(new Error('No SSH key found')); return; }
+  let targetKey, jumpInfo, jumpKey;
+  try {
+    targetKey = loadSSHKey(info.identityFile);
+    jumpInfo = parseProxyJump(info.proxyJump);
+    if (jumpInfo) jumpKey = loadSSHKey(jumpInfo.identityFile);
+  } catch (err) { callback(err); return; }
+  log('SFTP | connect', alias, info.host, info.port, info.username, targetKey.keyPath,
+    jumpInfo ? `via ${jumpInfo.alias}` : 'direct');
 
   const conn = new SSHClient();
   // Track the socket immediately so disconnectSFTP can tear it down even if the
   // tab is closed while still connecting (otherwise the socket leaks forever).
   ses.sftpConn = conn;
   let hostKeyMismatch = false;
+  let jumpHostKeyMismatch = false;
+  let jump = null;
+  let settled = false;
+  const finish = (err) => {
+    if (settled) return;
+    settled = true;
+    if (err) {
+      try { conn.end(); } catch {}
+      if (ses.sftpForwardSock) { try { ses.sftpForwardSock.destroy(); } catch {} ses.sftpForwardSock = null; }
+      if (jump) { try { jump.end(); } catch {} }
+    }
+    callback(err || null);
+  };
   conn.on('ready', () => {
     conn.sftp((err, sftp) => {
-      if (err) { callback(err); return; }
+      if (err) { finish(err); return; }
       ses.sftpConn = conn;
       ses.sftpSession = sftp;
       ses.remoteHost = alias;
       ses.remoteUser = info.username;
-      callback(null);
+      finish(null);
     });
   });
   conn.on('error', (err) => {
     log('SFTP | connection error:', err.message);
-    callback(hostKeyMismatch
+    finish(hostKeyMismatch
       ? new Error('Host key​ changed! If expected, remove it from ~/.treeru_hosts.json')
       : err);
   });
@@ -490,29 +544,56 @@ function connectSFTP(ses, alias, callback) {
     if (ses.sftpConn === conn) { // clear only if this session still owns this connection
       ses.sftpConn = null;
       ses.sftpSession = null;
+      if (ses.sftpForwardSock) { try { ses.sftpForwardSock.destroy(); } catch {} ses.sftpForwardSock = null; }
+      if (ses.sftpJumpConn) { try { ses.sftpJumpConn.end(); } catch {} ses.sftpJumpConn = null; }
     }
   });
-  conn.connect({
+  const targetOptions = {
     host: info.host,
     port: info.port,
     username: info.username,
-    privateKey,
+    privateKey: targetKey.privateKey,
     hostHash: 'sha256',
-    hostVerifier: (hash) => {
-      // Trust-on-first-use: pin the host key hash, refuse if it changes later
-      const id = `${info.host}:${info.port}`;
-      const known = loadHostKeys();
-      if (!known[id]) { known[id] = hash; saveHostKeys(known); return true; }
-      if (known[id] === hash) return true;
-      hostKeyMismatch = true;
-      return false;
-    },
+    hostVerifier: hostVerifierFor(info.host, info.port, () => { hostKeyMismatch = true; }),
+  };
+
+  if (!jumpInfo) { conn.connect(targetOptions); return; }
+
+  jump = new SSHClient();
+  ses.sftpJumpConn = jump;
+  jump.on('ready', () => {
+    log('SFTP | ProxyJump ready:', jumpInfo.alias);
+    jump.forwardOut('127.0.0.1', 0, info.host, info.port, (err, sock) => {
+      if (err) { finish(err); jump.end(); return; }
+      ses.sftpForwardSock = sock;
+      conn.connect({ ...targetOptions, sock });
+    });
+  });
+  jump.on('error', (err) => {
+    log('SFTP | ProxyJump error:', err.message);
+    finish(jumpHostKeyMismatch
+      ? new Error('ProxyJump host key changed! If expected, remove it from ~/.treeru_hosts.json')
+      : new Error(`ProxyJump ${jumpInfo.alias}: ${err.message}`));
+  });
+  jump.on('close', () => {
+    if (ses.sftpJumpConn === jump) ses.sftpJumpConn = null;
+  });
+  jump.connect({
+    host: jumpInfo.host,
+    port: jumpInfo.port,
+    username: jumpInfo.username,
+    privateKey: jumpKey.privateKey,
+    hostHash: 'sha256',
+    hostVerifier: hostVerifierFor(jumpInfo.host, jumpInfo.port, () => { jumpHostKeyMismatch = true; }),
   });
 }
 
 function disconnectSFTP(ses) {
   if (ses.sftpConn) { try { ses.sftpConn.end(); } catch {} }
+  if (ses.sftpForwardSock) { try { ses.sftpForwardSock.destroy(); } catch {} }
+  if (ses.sftpJumpConn) { try { ses.sftpJumpConn.end(); } catch {} }
   ses.sftpConn = null; ses.sftpSession = null;
+  ses.sftpForwardSock = null; ses.sftpJumpConn = null;
   ses.remoteMode = false; ses.remoteHost = ''; ses.remoteUser = ''; ses.remoteCwd = '';
   ses.pendingRemote = null;
 }
@@ -2323,7 +2404,11 @@ let tornDown = false;
 function cleanup() {
   if (clipInterval) { clearInterval(clipInterval); clipInterval = null; }
   saveSessions();
-  for (const s of sessions) { if (s.sftpConn) { try { s.sftpConn.end(); } catch {} } }
+  for (const s of sessions) {
+    if (s.sftpConn) { try { s.sftpConn.end(); } catch {} }
+    if (s.sftpForwardSock) { try { s.sftpForwardSock.destroy(); } catch {} }
+    if (s.sftpJumpConn) { try { s.sftpJumpConn.end(); } catch {} }
+  }
   if (watcher) { try { watcher.close(); } catch {} watcher = null; }
   releaseActiveFile();
   // Restore the terminal exactly once: disable mouse tracking, leave the alt-screen,

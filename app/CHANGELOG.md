@@ -41,3 +41,4 @@
 1003 - 좌우 방향키로 컬럼 간 이동 기능 추가
 1002 - 시작 시 하단 경로바 표시 안되는 문제 수정
 1000 - TreeRU v1.0.0 초기 릴리즈
+1098 - OpenSSH ProxyJump one-hop support for SSH/SFTP hosts (for example, internal servers reached through a bastion)
